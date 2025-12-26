@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <title>wgpu-notan-test</title>
+    <link data-trunk rel="rust" data-wasm-opt="z" data-cargo-features="" href="crates/main" />
     <style>
         body {
             margin: 0;
@@ -20,9 +21,5 @@
 </head>
 <body>
     <canvas id="notan"></canvas>
-    <script type="module">
-        import init from './pkg/wgpu_notan_test.js';
-        init();
-    </script>
 </body>
 </html>

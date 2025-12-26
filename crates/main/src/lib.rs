@@ -2,9 +2,9 @@ mod wgpu;
 
 use notan_app::prelude::*;
 use notan_app::{AppBuilder, WindowConfig};
+use notan_glow::GlowBackend;
 use notan_graphics::color::Color;
 use notan_graphics::prelude::*;
-use notan_glow::GlowBackend;
 use notan_web::WebBackend;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -78,6 +78,9 @@ fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
     {
         let backend = gfx.device.downcast_backend::<GlowBackend>().unwrap();
 
+        // Flush Notan's WebGL commands before wgpu reads
+        backend.flush();
+
         let input_raw = backend
             .get_raw_texture(state.texture1.texture().id())
             .expect("Failed to get texture1 raw handle");
@@ -85,12 +88,14 @@ fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
             .get_raw_texture(state.texture2.texture().id())
             .expect("Failed to get texture2 raw handle");
 
-        state.wgpu_processor.invert(
-            input_raw,
-            output_raw,
-            WIDTH,
-            HEIGHT,
-        );
+        // Initialize textures once (cached internally)
+        state
+            .wgpu_processor
+            .init_textures(input_raw, output_raw, WIDTH, HEIGHT);
+        state.wgpu_processor.invert();
+
+        // Reset wgpu's sampler bindings so Notan can render correctly
+        backend.unbind_samplers();
     }
 
     // === 3. Render texture2 to screen using Notan ===
@@ -204,8 +209,7 @@ async fn run() -> Result<(), JsValue> {
 
     // Get WebGL2 context and create notan backend
     let webgl2_ctx = get_webgl2_context(&canvas)?;
-    let backend =
-        WebBackend::with_webgl2_context(webgl2_ctx).map_err(|e| JsValue::from_str(&e))?;
+    let backend = WebBackend::with_webgl2_context(webgl2_ctx).map_err(|e| JsValue::from_str(&e))?;
 
     let win_config = WindowConfig::default().set_app_id("notan");
 

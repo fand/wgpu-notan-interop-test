@@ -672,6 +672,23 @@ impl GlowBackend {
         self.gl.get_raw_texture(texture_key)
     }
 
+    /// Flush pending GL commands
+    pub fn flush(&self) {
+        unsafe {
+            self.gl.flush();
+        }
+    }
+
+    /// Unbind all samplers (reset wgpu's sampler bindings)
+    pub fn unbind_samplers(&self) {
+        unsafe {
+            // Unbind samplers from texture units 0-7
+            for i in 0..8 {
+                self.gl.bind_sampler(i, None);
+            }
+        }
+    }
+
     /// Register an external texture (created outside of Notan)
     pub fn register_external_texture(
         &mut self,

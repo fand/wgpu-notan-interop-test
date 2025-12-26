@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::sync::Arc;
 use wasm_bindgen::JsValue;
 use wgpu::hal;
@@ -10,6 +11,10 @@ pub struct WgpuProcessor {
     invert_pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
+    // Cached textures (to avoid recreating/dropping each frame)
+    cached_input: RefCell<Option<wgpu::Texture>>,
+    cached_output: RefCell<Option<wgpu::Texture>>,
+    cached_bind_group: RefCell<Option<wgpu::BindGroup>>,
 }
 
 impl WgpuProcessor {
@@ -143,25 +148,29 @@ impl WgpuProcessor {
             invert_pipeline,
             sampler,
             bind_group_layout,
+            cached_input: RefCell::new(None),
+            cached_output: RefCell::new(None),
+            cached_bind_group: RefCell::new(None),
         })
     }
 
-    /// Process input texture with RGB inversion using wgpu
-    pub fn invert(
+    /// Initialize cached textures (call once after getting raw texture handles)
+    pub fn init_textures(
         &self,
         input_raw: web_sys::WebGlTexture,
         output_raw: web_sys::WebGlTexture,
         width: u32,
         height: u32,
     ) {
-        // Wrap raw WebGL textures as wgpu textures
+        if self.cached_input.borrow().is_some() {
+            return; // Already initialized
+        }
+
         let input_texture = self.wrap_raw_texture(input_raw, width, height, false);
         let output_texture = self.wrap_raw_texture(output_raw, width, height, true);
 
         let input_view = input_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Create bind group for this frame
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Invert Bind Group"),
             layout: &self.bind_group_layout,
@@ -177,7 +186,21 @@ impl WgpuProcessor {
             ],
         });
 
-        // Create command encoder and render pass
+        *self.cached_input.borrow_mut() = Some(input_texture);
+        *self.cached_output.borrow_mut() = Some(output_texture);
+        *self.cached_bind_group.borrow_mut() = Some(bind_group);
+    }
+
+    /// Process input texture with RGB inversion using wgpu
+    pub fn invert(&self) {
+        let output_ref = self.cached_output.borrow();
+        let bind_group_ref = self.cached_bind_group.borrow();
+
+        let output_texture = output_ref.as_ref().expect("Textures not initialized");
+        let bind_group = bind_group_ref.as_ref().expect("Bind group not initialized");
+
+        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Invert Encoder"),
         });
@@ -199,7 +222,7 @@ impl WgpuProcessor {
             });
 
             render_pass.set_pipeline(&self.invert_pipeline);
-            render_pass.set_bind_group(0, &bind_group, &[]);
+            render_pass.set_bind_group(0, bind_group, &[]);
             render_pass.draw(0..6, 0..1);
         }
 

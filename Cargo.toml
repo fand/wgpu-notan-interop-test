@@ -1,0 +1,47 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.13.0"
+authors = ["Test <test@example.com>"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/Nazariglez/notan"
+repository = "https://github.com/Nazariglez/notan"
+edition = "2021"
+
+[workspace.dependencies]
+notan_core = { path = "crates/notan_core" }
+notan_input = { path = "crates/notan_input" }
+notan_app = { path = "crates/notan_app" }
+notan_macro = { path = "crates/notan_macro" }
+notan_math = { path = "crates/notan_math" }
+notan_graphics = { path = "crates/notan_graphics" }
+notan_utils = { path = "crates/notan_utils" }
+notan_log = { path = "crates/notan_log" }
+notan_glyph = { path = "crates/notan_glyph" }
+notan_draw = { path = "crates/notan_draw" }
+notan_backend = { path = "crates/notan_backend" }
+notan_egui = { path = "crates/notan_egui" }
+notan_text = { path = "crates/notan_text" }
+notan_audio = { path = "crates/notan_audio" }
+notan_extra = { path = "crates/notan_extra" }
+notan_random = { path = "crates/notan_random" }
+notan_winit = { path = "crates/notan_winit" }
+notan_web = { path = "crates/notan_web" }
+notan_glow = { path = "crates/notan_glow" }
+notan_oddio = { path = "crates/notan_oddio" }
+
+log = "0.4"
+hashbrown = "0.15"
+parking_lot = "0.12"
+bytemuck = "1.21"
+serde = { version = "1.0", features = ["serde_derive"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "ico"] }
+
+# wasm deps
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+futures-util = "0.3"
+web-sys = "0.3"
+js-sys = "0.3"

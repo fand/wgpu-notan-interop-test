@@ -1,0 +1,13 @@
+[package]
+name = "notan_audio"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Provides simple audio API for Notan"
+
+[dependencies]
+parking_lot.workspace = true

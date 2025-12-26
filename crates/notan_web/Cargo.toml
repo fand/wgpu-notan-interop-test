@@ -1,0 +1,63 @@
+[package]
+name = "notan_web"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Provides a web/wasm32 backend for Notan"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+notan_core.workspace = true
+notan_app.workspace = true
+notan_glow.workspace = true
+notan_graphics.workspace = true
+notan_audio = { workspace = true, optional = true }
+notan_oddio = { workspace = true, optional = true }
+
+log.workspace = true
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+wasm-bindgen-futures.workspace = true
+
+console_error_panic_hook = "0.1.7"
+
+[dependencies.web-sys]
+workspace = true
+features = [
+    "Screen",
+    "Document",
+    "Window",
+    "Element",
+    "HtmlElement",
+    "Node",
+    "DomRect",
+    "DomRectReadOnly",
+    "HtmlCanvasElement",
+    "XmlHttpRequest",
+    "XmlHttpRequestEventTarget",
+    "XmlHttpRequestResponseType",
+    "Event",
+    "EventListener",
+    "EventTarget",
+    "MouseEvent",
+    "WheelEvent",
+    "KeyboardEvent",
+    "PointerEvent",
+    "CssStyleDeclaration",
+
+    "Clipboard",
+    "ClipboardEvent"
+]
+
+[features]
+audio = ["notan_app/audio", "notan_audio", "notan_oddio"]
+drop_files = ["web-sys/DragEvent", "web-sys/DataTransfer", "web-sys/FileList", "web-sys/File", "web-sys/DataTransferItemList", "web-sys/DataTransferItem"]
+clipboard = ["web-sys/Navigator", "web-sys/DataTransfer"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(web_sys_unstable_apis)'] }

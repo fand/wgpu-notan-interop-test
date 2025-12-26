@@ -1,0 +1,37 @@
+[package]
+name = "notan_winit"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Provides a native backend using winit for Notan"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+notan_core.workspace = true
+notan_app.workspace = true
+notan_glow.workspace = true
+notan_audio = { workspace = true, optional = true }
+notan_oddio = { workspace = true, optional = true }
+notan_input = { workspace = true, optional = true }
+
+image.workspace = true
+log.workspace = true
+
+glutin = "0.30.10"
+glutin-winit = "0.3.0"
+winit = "0.28.7"
+raw-window-handle = "0.5.2"
+arboard = { version = "3.4.1", optional = true, default-features = false }
+webbrowser = { version = "0.8.15", optional = true }
+mime_guess = { version = "2.0.5", optional = true }
+
+[features]
+audio = ["notan_app/audio", "notan_audio", "notan_oddio"]
+links = ["webbrowser"]
+drop_files = ["mime_guess"]
+clipboard = ["arboard", "notan_input"]

@@ -1,0 +1,29 @@
+[package]
+name = "wgpu-notan-test"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+notan_core = { path = "../notan_core" }
+notan_app = { path = "../notan_app" }
+notan_macro = { path = "../notan_macro" }
+notan_graphics = { path = "../notan_graphics" }
+notan_glow = { path = "../notan_glow" }
+notan_web = { path = "../notan_web" }
+notan_log = { path = "../notan_log" }
+
+log = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Window",
+    "HtmlCanvasElement",
+    "WebGl2RenderingContext",
+    "console"
+] }
+console_error_panic_hook = "0.1"

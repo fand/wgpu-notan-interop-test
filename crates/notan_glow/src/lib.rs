@@ -665,6 +665,13 @@ impl GlowBackend {
         self.textures.get(&texture_id).map(|t| t.texture)
     }
 
+    /// Get raw WebGlTexture from Notan texture ID
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_raw_texture(&self, texture_id: u64) -> Option<web_sys::WebGlTexture> {
+        let texture_key = self.textures.get(&texture_id)?.texture;
+        self.gl.get_raw_texture(texture_key)
+    }
+
     /// Register an external texture (created outside of Notan)
     pub fn register_external_texture(
         &mut self,

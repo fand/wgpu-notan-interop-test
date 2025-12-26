@@ -1,0 +1,862 @@
+> このレポジトリは、notanを使ったアプリにwgpuを統合するためのPoCです。
+
+現在 wgpu.rs のinvert() はglowを直接触っています。これをwgpuを用いて描画す
+るように修正してください。
+notanとwgpuの間でテクスチャを共有するには、glow contexからraw
+WebGlTextureを取得する必要があるかもしれません
+
+⏺ まずコードベースを理解します。
+
+⏺ Search(pattern: "**/*.rs")
+  ⎿  Found 100 files (ctrl+o to expand)
+
+⏺ Read(src/wgpu.rs)
+  ⎿  Error reading file
+
+⏺ Bash(ls -la /Users/amagi/src/github.com/fand/wgpu-notan-test/src/)
+  ⎿  Error: Exit code 2
+     "/Users/amagi/src/github.com/fand/wgpu-notan-test/src/": No such file or
+     directory (os error 2)
+
+⏺ Search(pattern: "src/**/*.rs")
+  ⎿  Found 0 files
+
+⏺ Bash(ls -la /Users/amagi/src/github.com/fand/wgpu-notan-test/)
+  ⎿  drwx------@    - amagi 26 Dec 01:36 .claude
+     .rw-r--r--@ 6.1k amagi 26 Dec 01:12 .DS_Store
+     drwxr-xr-x@    - amagi 26 Dec 10:08 .git
+     … +12 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "**/*wgpu*.rs")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+⏺ Search(pattern: "web/**/*.rs")
+  ⎿  Found 0 files
+
+⏺ Read(Cargo.toml)
+  ⎿  Read 56 lines
+
+⏺ Read(crates/main/src/wgpu.rs)
+  ⎿  Read 214 lines
+
+⏺ Search(pattern: "crates/main/src/**/*.rs")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+⏺ Read(crates/main/src/lib.rs)
+  ⎿  Read 236 lines
+
+⏺ Read(crates/notan_glow/src/texture_source.rs)
+  ⎿  Read 130 lines
+
+⏺ wgpu-patchedを確認します。テクスチャ共有のためのカスタムAPIがあるか見てみましょう。
+
+⏺ Read(TEXTURE_SHARING_PLAN.md)
+  ⎿  Read 182 lines
+
+⏺ Read(dev.md)
+  ⎿  Read 79 lines
+
+⏺ Bash(ls -la
+      /Users/amagi/src/github.com/fand/wgpu-notan-test/crates/wgpu-patched/)
+  ⎿  drwxr-xr-x@    - amagi 26 Dec 02:01 .cargo
+     drwxr-xr-x@    - amagi 26 Dec 02:01 .config
+     .rw-r--r--@ 1.1k amagi 26 Dec 02:01 .deny.toml
+     … +38 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "texture_from_raw|raw_texture|glow::Texture", path:
+        "crates/wgpu-patched")
+  ⎿  Found 11 files (ctrl+o to expand)
+
+⏺ Read(crates/wgpu-patched/wgpu-hal/src/gles/mod.rs)
+  ⎿  Read 1195 lines
+
+⏺ wgpu-patchedにテクスチャ共有APIがすでにある。次にwgpuの高レベルAPIを確認します。
+
+⏺ Search(pattern:
+        "from_raw|create_texture_from_hal|unsafe_create_texture_from_hal",
+        path: "crates/wgpu-patched/wgpu")
+  ⎿  Found 2 files (ctrl+o to expand)
+
+⏺ Search(pattern: "create_texture_from_hal|unsafe_create_texture_from_hal",
+        path: "crates/wgpu-patched/wgpu/src/api/device.rs", output_mode:
+        "content")
+  ⎿  Found 48 lines (ctrl+o to expand)
+
+⏺ Read(crates/main/Cargo.toml)
+  ⎿  Read 36 lines
+
+⏺ wgpu-halのGles APIの型を確認します。
+
+⏺ Search(pattern: "pub type Gles|impl HalApi for|type Api =", path:
+        "crates/wgpu-patched", output_mode: "content")
+  ⎿  Found 15 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "wgpu_core|webgl", path:
+        "crates/wgpu-patched/wgpu/Cargo.toml", output_mode: "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+⏺ まずWGSLシェーダーを作成し、次にwgpu.rsを更新します。
+
+⏺ Write(crates/main/src/invert.wgsl)
+  ⎿  Wrote 41 lines to crates/main/src/invert.wgsl
+     // Fullscreen quad vertex shader
+     struct VertexOutput {
+         @builtin(position) position: vec4<f32>,
+         @location(0) uv: vec2<f32>,
+     }
+     @vertex
+     fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput
+     {
+         // Generate fullscreen triangle (3 vertices cover the screen)
+         var pos = array<vec2<f32>, 6>(
+
+     … +31 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "as_hal|downcast|unsafe.*hal|hal_device", path:
+        "crates/wgpu-patched/wgpu/src/api", output_mode: "content")
+  ⎿  Found 277 lines (ctrl+o to expand)
+
+⏺ Search(pattern: "pub use wgpu_hal|pub use.*hal|hal_api", path:
+        "crates/wgpu-patched/wgpu/src", output_mode: "content")
+  ⎿  Found 27 lines (ctrl+o to expand)
+
+⏺ Read(crates/wgpu-patched/wgpu/Cargo.toml)
+  ⎿  Read 220 lines
+
+⏺ wgpu.rsを書き換えます。
+
+⏺ Write(crates/main/src/wgpu.rs)
+  ⎿  Added 183 lines, removed 134 lines
+       1  use std::sync::Arc;
+       2  use wasm_bindgen::JsValue;
+       3  use notan_glow::TextureKey;
+       4 +use wgpu::hal;
+       5
+       6  pub struct WgpuProcessor {
+       7      pub device: Arc<wgpu::Device>,
+       8      pub queue: Arc<wgpu::Queue>,
+       9      pub format: wgpu::TextureFormat,
+      10 -    // glow shader program (reused across frames)
+      11 -    invert_program: Option<glow::Program>,
+      10 +    // wgpu pipeline resources
+      11 +    invert_pipeline: wgpu::RenderPipeline,
+      12 +    sampler: wgpu::Sampler,
+      13 +    bind_group_layout: wgpu::BindGroupLayout,
+      14  }
+      15
+      16  impl WgpuProcessor {
+     ...
+       51          let surface_caps =
+           surface.get_capabilities(&adapter);
+       52          let format = surface_caps.formats[0];
+       53
+       54 +        // Create shader module
+       55 +        let shader =
+          +device.create_shader_module(wgpu::ShaderModuleDescriptor {
+       56 +            label: Some("Invert Shader"),
+       57 +            source: wgpu::ShaderSource::Wgsl(include_str!("
+          +invert.wgsl").into()),
+       58 +        });
+       59 +
+       60 +        // Create sampler
+       61 +        let sampler =
+          +device.create_sampler(&wgpu::SamplerDescriptor {
+       62 +            label: Some("Invert Sampler"),
+       63 +            address_mode_u: wgpu::AddressMode::ClampToEdge,
+       64 +            address_mode_v: wgpu::AddressMode::ClampToEdge,
+       65 +            address_mode_w: wgpu::AddressMode::ClampToEdge,
+       66 +            mag_filter: wgpu::FilterMode::Linear,
+       67 +            min_filter: wgpu::FilterMode::Linear,
+       68 +            mipmap_filter: wgpu::FilterMode::Nearest,
+       69 +            ..Default::default()
+       70 +        });
+       71 +
+       72 +        // Create bind group layout
+       73 +        let bind_group_layout = device.create_bind_group_la
+          +yout(&wgpu::BindGroupLayoutDescriptor {
+       74 +            label: Some("Invert Bind Group Layout"),
+       75 +            entries: &[
+       76 +                wgpu::BindGroupLayoutEntry {
+       77 +                    binding: 0,
+       78 +                    visibility:
+          +wgpu::ShaderStages::FRAGMENT,
+       79 +                    ty: wgpu::BindingType::Texture {
+       80 +                        sample_type:
+          +wgpu::TextureSampleType::Float { filterable: true },
+       81 +                        view_dimension:
+          +wgpu::TextureViewDimension::D2,
+       82 +                        multisampled: false,
+       83 +                    },
+       84 +                    count: None,
+       85 +                },
+       86 +                wgpu::BindGroupLayoutEntry {
+       87 +                    binding: 1,
+       88 +                    visibility:
+          +wgpu::ShaderStages::FRAGMENT,
+       89 +                    ty: wgpu::BindingType::Sampler(wgpu::Sa
+          +mplerBindingType::Filtering),
+       90 +                    count: None,
+       91 +                },
+       92 +            ],
+       93 +        });
+       94 +
+       95 +        // Create pipeline layout
+       96 +        let pipeline_layout = device.create_pipeline_layout
+          +(&wgpu::PipelineLayoutDescriptor {
+       97 +            label: Some("Invert Pipeline Layout"),
+       98 +            bind_group_layouts: &[&bind_group_layout],
+       99 +            push_constant_ranges: &[],
+      100 +        });
+      101 +
+      102 +        // Create render pipeline
+      103 +        let invert_pipeline = device.create_render_pipeline
+          +(&wgpu::RenderPipelineDescriptor {
+      104 +            label: Some("Invert Pipeline"),
+      105 +            layout: Some(&pipeline_layout),
+      106 +            vertex: wgpu::VertexState {
+      107 +                module: &shader,
+      108 +                entry_point: Some("vs_main"),
+      109 +                buffers: &[],
+      110 +                compilation_options: Default::default(),
+      111 +            },
+      112 +            fragment: Some(wgpu::FragmentState {
+      113 +                module: &shader,
+      114 +                entry_point: Some("fs_main"),
+      115 +                targets: &[Some(wgpu::ColorTargetState {
+      116 +                    format:
+          +wgpu::TextureFormat::Rgba8UnormSrgb,
+      117 +                    blend: Some(wgpu::BlendState::REPLACE),
+      118 +                    write_mask: wgpu::ColorWrites::ALL,
+      119 +                })],
+      120 +                compilation_options: Default::default(),
+      121 +            }),
+      122 +            primitive: wgpu::PrimitiveState {
+      123 +                topology:
+          +wgpu::PrimitiveTopology::TriangleList,
+      124 +                strip_index_format: None,
+      125 +                front_face: wgpu::FrontFace::Ccw,
+      126 +                cull_mode: None,
+      127 +                polygon_mode: wgpu::PolygonMode::Fill,
+      128 +                unclipped_depth: false,
+      129 +                conservative: false,
+      130 +            },
+      131 +            depth_stencil: None,
+      132 +            multisample: wgpu::MultisampleState::default(),
+      133 +            multiview: None,
+      134 +            cache: None,
+      135 +        });
+      136 +
+      137          Ok(Self {
+      138              device,
+      139              queue,
+      140              format,
+      141 -            invert_program: None,
+      141 +            invert_pipeline,
+      142 +            sampler,
+      143 +            bind_group_layout,
+      144          })
+      145      }
+      146
+      147 -    /// Initialize the glow shader program (must be called
+          -with gl context)
+      148 -    pub fn init_shader(&mut self, gl: &glow::Context) {
+      149 -        if self.invert_program.is_none() {
+      150 -            self.invert_program = Some(unsafe {
+          -create_invert_program(gl) });
+      151 -        }
+      152 -    }
+      153 -
+      154 -    /// Process input texture with RGB inversion, render to
+          - output texture
+      155 -    /// Uses glow (same WebGL2 context) for actual
+          -rendering
+      147 +    /// Process input texture with RGB inversion using wgpu
+      148      pub fn invert(
+      149 -        &mut self,
+      150 -        gl: &glow::Context,
+      149 +        &self,
+      150          input_handle: TextureKey,
+      151          output_handle: TextureKey,
+      152          width: u32,
+      153          height: u32,
+      154      ) {
+      155 -        self.init_shader(gl);
+      155 +        // Wrap glow textures as wgpu textures
+      156 +        let input_texture =
+          +self.wrap_glow_texture(input_handle, width, height, false);
+      157 +        let output_texture =
+          +self.wrap_glow_texture(output_handle, width, height, true);
+      158
+      159 -        use glow::HasContext;
+      159 +        let input_view = input_texture.create_view(&wgpu::T
+          +extureViewDescriptor::default());
+      160 +        let output_view = output_texture.create_view(&wgpu:
+          +:TextureViewDescriptor::default());
+      161
+      162 -        unsafe {
+      162 +        // Create bind group for this frame
+      163 +        let bind_group =
+          +self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+      164 +            label: Some("Invert Bind Group"),
+      165 +            layout: &self.bind_group_layout,
+      166 +            entries: &[
+      167 +                wgpu::BindGroupEntry {
+      168 +                    binding: 0,
+      169 +                    resource:
+          +wgpu::BindingResource::TextureView(&input_view),
+      170 +                },
+      171 +                wgpu::BindGroupEntry {
+      172 +                    binding: 1,
+      173 +                    resource:
+          +wgpu::BindingResource::Sampler(&self.sampler),
+      174 +                },
+      175 +            ],
+      176 +        });
+      177
+      178 -            // Create framebuffer and attach output texture
+      179 -            let fbo = gl.create_framebuffer().unwrap();
+      180 -            gl.bind_framebuffer(glow::FRAMEBUFFER,
+          -Some(fbo));
+      181 -            gl.framebuffer_texture_2d(
+      182 -                glow::FRAMEBUFFER,
+      183 -                glow::COLOR_ATTACHMENT0,
+      184 -                glow::TEXTURE_2D,
+      185 -                Some(output_handle),
+      186 -                0,
+      187 -            );
+      178 +        // Create command encoder and render pass
+      179 +        let mut encoder = self.device.create_command_encode
+          +r(&wgpu::CommandEncoderDescriptor {
+      180 +            label: Some("Invert Encoder"),
+      181 +        });
+      182
+      183 -            // Set viewport
+      184 -            gl.viewport(0, 0, width as i32, height as i32);
+      183 +        {
+      184 +            let mut render_pass =
+          +encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+      185 +                label: Some("Invert Render Pass"),
+      186 +                color_attachments:
+          +&[Some(wgpu::RenderPassColorAttachment {
+      187 +                    view: &output_view,
+      188 +                    resolve_target: None,
+      189 +                    ops: wgpu::Operations {
+      190 +                        load:
+          +wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+      191 +                        store: wgpu::StoreOp::Store,
+      192 +                    },
+      193 +                })],
+      194 +                depth_stencil_attachment: None,
+      195 +                timestamp_writes: None,
+      196 +                occlusion_query_set: None,
+      197 +            });
+      198
+      199 -            // Use our shader program
+      200 -            let program = self.invert_program.unwrap();
+      201 -            gl.use_program(Some(program));
+      202 -
+      203 -            // Bind input texture
+      204 -            gl.active_texture(glow::TEXTURE0);
+      205 -            gl.bind_texture(glow::TEXTURE_2D,
+          -Some(input_handle));
+      206 -            let loc = gl.get_uniform_location(program,
+          -"u_texture");
+      207 -            gl.uniform_1_i32(loc.as_ref(), 0);
+      208 -
+      209 -            // Create VAO and VBO for fullscreen quad
+      210 -            let vao = gl.create_vertex_array().unwrap();
+      211 -            gl.bind_vertex_array(Some(vao));
+      212 -
+      213 -            let vbo = gl.create_buffer().unwrap();
+      214 -            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+      215 -
+      216 -            #[rustfmt::skip]
+      217 -            let vertices: [f32; 24] = [
+      218 -                // pos      // uv
+      219 -                -1.0, -1.0, 0.0, 0.0,
+      220 -                 1.0, -1.0, 1.0, 0.0,
+      221 -                 1.0,  1.0, 1.0, 1.0,
+      222 -                -1.0, -1.0, 0.0, 0.0,
+      223 -                 1.0,  1.0, 1.0, 1.0,
+      224 -                -1.0,  1.0, 0.0, 1.0,
+      225 -            ];
+      226 -
+      227 -            gl.buffer_data_u8_slice(
+      228 -                glow::ARRAY_BUFFER,
+      229 -                bytemuck::cast_slice(&vertices),
+      230 -                glow::STATIC_DRAW,
+      231 -            );
+      232 -
+      233 -            // Position attribute
+      234 -            gl.enable_vertex_attrib_array(0);
+      235 -            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT,
+          - false, 16, 0);
+      236 -
+      237 -            // UV attribute
+      238 -            gl.enable_vertex_attrib_array(1);
+      239 -            gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT,
+          - false, 16, 8);
+      240 -
+      241 -            // Draw
+      242 -            gl.draw_arrays(glow::TRIANGLES, 0, 6);
+      243 -
+      244 -            // Cleanup temporary resources
+      245 -            gl.delete_buffer(vbo);
+      246 -            gl.delete_vertex_array(vao);
+      247 -
+      248 -            // Restore state
+      249 -            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+      250 -            gl.delete_framebuffer(fbo);
+      199 +
+          +render_pass.set_pipeline(&self.invert_pipeline);
+      200 +            render_pass.set_bind_group(0, &bind_group,
+          +&[]);
+      201 +            render_pass.draw(0..6, 0..1);
+      202          }
+      203 -    }
+      204 -}
+      203
+      204 -impl Drop for WgpuProcessor {
+      205 -    fn drop(&mut self) {
+      206 -        // Note: We can't clean up the glow program here
+          -since we don't have gl context
+      207 -        // In a real app, you'd want to handle this
+          -properly
+      204 +
+          +self.queue.submit(std::iter::once(encoder.finish()));
+      205      }
+      206 -}
+      206
+      207 -unsafe fn create_invert_program(gl: &glow::Context) ->
+          -glow::Program {
+      208 -    use glow::HasContext;
+      207 +    /// Wrap a glow texture as a wgpu texture
+      208 +    fn wrap_glow_texture(
+      209 +        &self,
+      210 +        glow_texture: TextureKey,
+      211 +        width: u32,
+      212 +        height: u32,
+      213 +        is_render_target: bool,
+      214 +    ) -> wgpu::Texture {
+      215 +        let desc = wgpu::TextureDescriptor {
+      216 +            label: Some("Wrapped Glow Texture"),
+      217 +            size: wgpu::Extent3d {
+      218 +                width,
+      219 +                height,
+      220 +                depth_or_array_layers: 1,
+      221 +            },
+      222 +            mip_level_count: 1,
+      223 +            sample_count: 1,
+      224 +            dimension: wgpu::TextureDimension::D2,
+      225 +            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+      226 +            usage: if is_render_target {
+      227 +                wgpu::TextureUsages::RENDER_ATTACHMENT |
+          +wgpu::TextureUsages::TEXTURE_BINDING
+      228 +            } else {
+      229 +                wgpu::TextureUsages::TEXTURE_BINDING
+      230 +            },
+      231 +            view_formats: &[],
+      232 +        };
+      233
+      234 -    let vert_src = r#"#version 300 es
+      235 -        layout(location = 0) in vec2 a_pos;
+      236 -        layout(location = 1) in vec2 a_uv;
+      237 -        out vec2 v_uv;
+      238 -        void main() {
+      239 -            v_uv = a_uv;
+      240 -            gl_Position = vec4(a_pos, 0.0, 1.0);
+      241 -        }
+      242 -    "#;
+      234 +        // Convert TextureDescriptor to hal format
+      235 +        let hal_desc = hal::TextureDescriptor {
+      236 +            label: desc.label,
+      237 +            size: desc.size,
+      238 +            mip_level_count: desc.mip_level_count,
+      239 +            sample_count: desc.sample_count,
+      240 +            dimension: desc.dimension,
+      241 +            format: desc.format,
+      242 +            usage: hal::TextureUses::from_bits(desc.usage.b
+          +its()).unwrap_or(hal::TextureUses::empty()),
+      243 +            memory_flags: hal::MemoryFlags::empty(),
+      244 +            view_formats: vec![],
+      245 +        };
+      246
+      247 -    let frag_src = r#"#version 300 es
+      248 -        precision mediump float;
+      249 -        in vec2 v_uv;
+      250 -        out vec4 color;
+      251 -        uniform sampler2D u_texture;
+      252 -        void main() {
+      253 -            vec4 c = texture(u_texture, v_uv);
+      254 -            color = vec4(1.0 - c.rgb, c.a);
+      255 -        }
+      256 -    "#;
+      247 +        let format_desc =
+          +hal::gles::TextureFormatDesc::rgba8_srgb();
+      248
+      249 -    let program = gl.create_program().unwrap();
+      249 +        // Create hal texture from glow handle
+      250 +        let hal_texture = unsafe {
+      251 +            hal::gles::Texture::from_raw(glow_texture,
+          +&hal_desc, format_desc)
+      252 +        };
+      253
+      254 -    let vert =
+          -gl.create_shader(glow::VERTEX_SHADER).unwrap();
+      255 -    gl.shader_source(vert, vert_src);
+      256 -    gl.compile_shader(vert);
+      257 -    if !gl.get_shader_compile_status(vert) {
+      258 -        panic!("Vertex shader error: {}",
+          -gl.get_shader_info_log(vert));
+      254 +        // Wrap hal texture as wgpu texture
+      255 +        unsafe {
+      256 +            self.device.create_texture_from_hal::<hal::api:
+          +:Gles>(hal_texture, &desc)
+      257 +        }
+      258      }
+      259 -
+      260 -    let frag =
+          -gl.create_shader(glow::FRAGMENT_SHADER).unwrap();
+      261 -    gl.shader_source(frag, frag_src);
+      262 -    gl.compile_shader(frag);
+      263 -    if !gl.get_shader_compile_status(frag) {
+      264 -        panic!("Fragment shader error: {}",
+          -gl.get_shader_info_log(frag));
+      265 -    }
+      266 -
+      267 -    gl.attach_shader(program, vert);
+      268 -    gl.attach_shader(program, frag);
+      269 -    gl.link_program(program);
+      270 -    if !gl.get_program_link_status(program) {
+      271 -        panic!("Program link error: {}",
+          -gl.get_program_info_log(program));
+      272 -    }
+      273 -
+      274 -    gl.delete_shader(vert);
+      275 -    gl.delete_shader(frag);
+      276 -
+      277 -    program
+      259  }
+
+⏺ lib.rsを更新して新しいinvert()シグネチャに合わせます。
+
+⏺ Update(crates/main/src/lib.rs)
+  ⎿  Added 1 line, removed 2 lines
+      74          gfx.render_to(&state.texture1, &renderer);
+      75      }
+      76
+      77 -    // === 2. Process texture1 -> texture2 with RGB inversion
+         - (wgpu/glow) ===
+      77 +    // === 2. Process texture1 -> texture2 with RGB inversion
+         + (wgpu) ===
+      78      {
+      79          let backend =
+          gfx.device.downcast_backend::<GlowBackend>().unwrap();
+      80
+     ...
+      86              .expect("Failed to get texture2 handle");
+      87
+      88          state.wgpu_processor.invert(
+      89 -            &backend.gl,
+      89              input_handle,
+      90              output_handle,
+      91              WIDTH,
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | head -100)
+  ⎿    Compiling wgpu-hal v23.0.0 (/Users/amagi/src/github.com/fand/wgpu-
+    notan-test/crates/wgpu-patched/wgpu-hal)
+    warning: unexpected `cfg` condition name: `dot_out`
+    … +134 lines (ctrl+o to expand)
+
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target       timeout:
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | tail -100)  3m 0s
+  ⎿  warning: unexpected `cfg` condition name: `native`
+       --> crates/wgpu-patched/wgpu/src/util/init.rs:73:11
+        |
+     … +137 lines (ctrl+o to expand)
+
+⏺ glowバージョンの不一致があります。wgpu-patchedのglowを使うように修正します。
+
+⏺ Search(pattern: "^glow", path: "crates/notan_glow/Cargo.toml", output_mode:
+        "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+⏺ Search(pattern: "^glow", path: "crates/wgpu-patched/wgpu-hal/Cargo.toml",
+        output_mode: "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+⏺ Search(pattern: "^glow", path: "crates/wgpu-patched/Cargo.toml",
+        output_mode: "content")
+  ⎿  Found 1 line (ctrl+o to expand)
+
+⏺ Bash(ls -la /Users/amagi/src/github.com/fand/wgpu-notan-test/crates/wgpu-pat
+      ched/glow/ && head -20
+      /Users/amagi/src/github.com/fand/wgpu-notan-test/crates/wgpu-patch…)
+  ⎿  drwxr-xr-x@    - amagi 26 Dec 10:01 .git
+     drwxr-xr-x@    - amagi 26 Dec 10:01 .github
+     .rw-r--r--@   48 amagi 26 Dec 10:01 .gitignore
+     … +32 lines (ctrl+o to expand)
+
+⏺ wgpu-patchedがglow 0.14を使用しています。ローカルのglow 0.16を使うようにpatchします。
+
+⏺ Read(Cargo.toml)
+  ⎿  Read 56 lines
+
+⏺ Update(Cargo.toml)
+  ⎿  Added 1 line
+      53  wgpu-core = { path = "crates/wgpu-patched/wgpu-core" }
+      54  wgpu-types = { path = "crates/wgpu-patched/wgpu-types" }
+      55  naga = { path = "crates/wgpu-patched/naga" }
+      56 +glow = { path = "crates/wgpu-patched/glow" }
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target       timeout:
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | tail -80)   3m 0s
+  ⎿      --> crates/wgpu-patched/glow/src/web_sys.rs:4016:9
+          |
+     4016 |         name: u32,
+     … +105 lines (ctrl+o to expand)
+
+⏺ Read(crates/wgpu-patched/Cargo.toml)
+  ⎿  Read 208 lines
+
+⏺ wgpu-patchedのCargo.tomlでglowパッチを有効にします。
+
+⏺ Update(crates/wgpu-patched/Cargo.toml)
+  ⎿  Added 1 line, removed 1 line
+      193  #gpu-alloc = { path = "../gpu-alloc/gpu-alloc" }
+      194
+      195  [patch.crates-io]
+      196 -#glow = { path = "../glow" }
+      196 +glow = { path = "./glow" }
+      197  #web-sys = { path = "../wasm-bindgen/crates/web-sys" }
+      198  #js-sys = { path = "../wasm-bindgen/crates/js-sys" }
+      199  #wasm-bindgen = { path = "../wasm-bindgen" }
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target       timeout:
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | tail -60)   3m 0s
+  ⎿    Compiling wgpu-notan-test v0.1.0 (/Users/amagi/src/github.com/fand
+    /wgpu-notan-test/crates/main)
+    error[E0308]: mismatched types
+    … +80 lines (ctrl+o to expand)
+
+
+⏺ Bash(cargo tree -p wgpu-notan-test --target wasm32-unknown-unknown 2>&1 |
+      grep glow)
+  ⎿ ├── glow v0.16.0 (/Users/amagi/src/github.com/fand/wgpu-notan-test/cr
+    ates/wgpu-patched/glow)
+    ├── notan_glow v0.13.0 (/Users/amagi/src/github.com/fand/wgpu-notan-t
+    … +6 lines (ctrl+o to expand)
+
+
+
+⏺ Bash(cargo tree -p wgpu-hal --target wasm32-unknown-unknown 2>&1 | grep
+      glow)
+  ⎿  ├── glow v0.14.2
+
+⏺ Bash(cargo tree -p wgpu-hal --target wasm32-unknown-unknown -i glow 2>&1)
+  ⎿  Error: Exit code 101
+     error: There are multiple `glow` packages in your project, and the
+     specification `glow` is ambiguous.
+     Please re-run this command with one of the following specifications:
+       glow@0.14.2
+       glow@0.16.0
+
+⏺ wgpu-hal/Cargo.tomlを直接修正して、ローカルglowを使うようにします。
+
+⏺ Search(pattern: "glow", path: "crates/wgpu-patched/wgpu-hal/Cargo.toml",
+        output_mode: "content")
+  ⎿  Found 2 lines (ctrl+o to expand)
+
+⏺ Read(crates/wgpu-patched/wgpu-hal/Cargo.toml)
+  ⎿  Read 20 lines
+
+⏺ Update(crates/wgpu-patched/wgpu-hal/Cargo.toml)
+  ⎿  Added 1 line, removed 1 line
+      128
+      129  # backend: Gles
+      130  bytemuck = { workspace = true, optional = true }
+      131 -glow = { workspace = true, optional = true }
+      131 +glow = { path = "../glow", optional = true }
+      132
+      133  [dependencies.wgt]
+      134  package = "wgpu-types"
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target       timeout:
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | tail -60)   3m 0s
+  ⎿     |                       ---------------------------- ^^^^^^^^ exp
+    ected `Option<&[u8]>`, found `&[u8]`
+        |                       |
+    … +71 lines (ctrl+o to expand)
+
+
+⏺ glow 0.16のAPI変更に対応するため、wgpu-halを修正します。
+
+⏺ Read(crates/wgpu-patched/wgpu-hal/src/gles/queue.rs)
+  ⎿  Read 20 lines
+
+⏺ Update(crates/wgpu-patched/wgpu-hal/src/gles/queue.rs)
+  ⎿  Added 1 line, removed 1 line
+      744                              buffer_data =
+           src.data.as_ref().unwrap().lock().unwrap();
+      745                              let src_data =
+      746
+           &buffer_data.as_slice()[copy.buffer_layout.offset as
+           usize..];
+      747 -                            glow::PixelUnpackData::Slice(
+          -src_data)
+      747 +                            glow::PixelUnpackData::Slice(
+          +Some(src_data))
+      748                          }
+      749                      };
+      750                      if is_layered_target(dst_target) {
+
+⏺ Read(crates/wgpu-patched/wgpu-hal/src/gles/queue.rs)
+  ⎿  Read 20 lines
+
+⏺ Update(crates/wgpu-patched/wgpu-hal/src/gles/queue.rs)
+  ⎿  Added 1 line, removed 1 line
+      889                          None => {
+      890                              buffer_data =
+           dst.data.as_ref().unwrap().lock().unwrap();
+      891                              let dst_data = &mut
+           buffer_data.as_mut_slice()[offset as usize..];
+      892 -                            glow::PixelPackData::Slice(
+          -dst_data)
+      892 +                            glow::PixelPackData::Slice(Some(
+          +dst_data))
+      893                          }
+      894                      };
+      895                      unsafe {
+
+⏺ Read(crates/wgpu-patched/wgpu-hal/src/gles/queue.rs)
+  ⎿  Read 20 lines
+
+⏺ Update(crates/wgpu-patched/wgpu-hal/src/gles/queue.rs)
+  ⎿  Added 1 line, removed 1 line
+      1549                  unsafe {
+      1550                      gl.bind_image_texture(
+      1551                          slot,
+      1552 -                        binding.raw,
+      1552 +                        Some(binding.raw),
+      1553                          binding.mip_level as i32,
+      1554                          binding.array_layer.is_none(),
+      1555
+            binding.array_layer.unwrap_or_default() as i32,
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target       timeout:
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | tail -60)   3m 0s
+  ⎿  857 | ...                       None,
+         |                           ^^^^ expected `PixelUnpackData<'_>`,
+     found `Option<_>`
+    … +72 lines (ctrl+o to expand)
+
+
+⏺ device.rsの修正も必要です。
+
+⏺ Read(crates/wgpu-patched/wgpu-hal/src/gles/device.rs)
+  ⎿  Read 100 lines
+
+⏺ Search(pattern: "tex_image_2d|tex_image_3d", path:
+        "crates/wgpu-patched/wgpu-hal/src/gles/device.rs", output_mode:
+        "content")
+  ⎿  Found 47 lines (ctrl+o to expand)
+
+⏺ Read(crates/wgpu-patched/wgpu-hal/src/gles/device.rs)
+  ⎿  Read 50 lines
+
+⏺ Update(crates/wgpu-patched/wgpu-hal/src/gles/device.rs)
+  ⎿  Added 2 lines, removed 2 lines
+      834                                  0,
+      835                                  format_desc.external,
+      836                                  format_desc.data_type,
+      837 -                                None,
+      837 +
+          +glow::PixelUnpackData::Slice(None),
+      838                              );
+      839                              width = max(1, width / 2);
+      840                              height = max(1, height / 2);
+     ...
+      854                                  0,
+      855                                  format_desc.external,
+      856                                  format_desc.data_type,
+      857 -                                None,
+      857 +
+          +glow::PixelUnpackData::Slice(None),
+      858                              );
+      859                              width = max(1, width / 2);
+      860                              height = max(1, height / 2);
+
+⏺ Update(crates/wgpu-patched/wgpu-hal/src/gles/device.rs)
+  ⎿  Added 2 lines, removed 2 lines
+      907                                      0,
+      908                                      format_desc.external,
+      909                                      format_desc.data_type,
+      910 -                                    None,
+      910 +
+          +glow::PixelUnpackData::Slice(None),
+      911                                  );
+      912                              }
+      913                              width = max(1, width / 2);
+     ...
+      926                                  0,
+      927                                  format_desc.external,
+      928                                  format_desc.data_type,
+      929 -                                None,
+      929 +
+          +glow::PixelUnpackData::Slice(None),
+      930                              );
+      931                              width = max(1, width / 2);
+      932                              height = max(1, height / 2);
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target       timeout:
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | tail -60)   3m 0s
+  ⎿             [lints.rust]
+                unexpected_cfgs = { level = "warn", check-cfg = ['cfg(nat
+    ive)'] }
+    … +84 lines (ctrl+o to expand)
+
+
+⏺ 最後のエラーを修正します。
+
+⏺ Update(crates/main/src/wgpu.rs)
+  ⎿  Added 1 line, removed 1 line
+      242              sample_count: desc.sample_count,
+      243              dimension: desc.dimension,
+      244              format: desc.format,
+      245 -            usage:
+          -hal::TextureUses::from_bits(desc.usage.bits()
+          -).unwrap_or(hal::TextureUses::empty()),
+      245 +            usage:
+          +hal::TextureUses::from_bits(desc.usage.bits() as u16
+          +).unwrap_or(hal::TextureUses::empty()),
+      246              memory_flags: hal::MemoryFlags::empty(),
+      247              view_formats: vec![],
+      248          };
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --target       timeout:
+      wasm32-unknown-unknown -p wgpu-notan-test 2>&1 | tail -40)   3m 0s
+  ⎿     |
+    144 |     #[cfg(webgpu)]
+        |           ^^^^^^ help: found config with similar value: `featur
+    … +51 lines (ctrl+o to expand)
+
+
+⏺ ビルド成功！trunkでWeb向けにビルドしてテストします。
+
+⏺ Bash(CMAKE_POLICY_VERSION_MINIMUM=3.5 trunk build 2>&1) timeout: 3m 0s
+  ⎿ 2025-12-26T18:29:33.643700Z  INFO 🚀 Starting trunk 0.21.14
+    2025-12-26T18:29:33.644056Z  WARN The field `address` in the configur
+    ation is deprecated and will be removed in a future version. Migrate
+    … +771 lines (ctrl+o to expand)
+
+
+⏺ Bash(ls -la /Users/amagi/src/github.com/fand/wgpu-notan-test/dist/)
+  ⎿ .rw-r--r--@ 1.2k amagi 26 Dec 10:29 index.html
+    .rw-r--r--@ 115k amagi 26 Dec 10:29 wgpu-notan-test-24061997719dbb5e.
+    js
+    … +2 lines (ctrl+o to expand)
+
+
+⏺ ビルド成功！開発サーバーを起動してブラウザでテストします。

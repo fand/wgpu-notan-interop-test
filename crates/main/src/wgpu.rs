@@ -1,13 +1,15 @@
 use std::sync::Arc;
 use wasm_bindgen::JsValue;
-use notan_glow::TextureKey;
+use wgpu::hal;
 
 pub struct WgpuProcessor {
     pub device: Arc<wgpu::Device>,
     pub queue: Arc<wgpu::Queue>,
     pub format: wgpu::TextureFormat,
-    // glow shader program (reused across frames)
-    invert_program: Option<glow::Program>,
+    // wgpu pipeline resources
+    invert_pipeline: wgpu::RenderPipeline,
+    sampler: wgpu::Sampler,
+    bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl WgpuProcessor {
@@ -51,163 +53,209 @@ impl WgpuProcessor {
         let surface_caps = surface.get_capabilities(&adapter);
         let format = surface_caps.formats[0];
 
+        // Create shader module
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Invert Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("invert.wgsl").into()),
+        });
+
+        // Create sampler
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Invert Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        // Create bind group layout
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Invert Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        // Create pipeline layout
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Invert Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        // Create render pipeline
+        let invert_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Invert Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
         Ok(Self {
             device,
             queue,
             format,
-            invert_program: None,
+            invert_pipeline,
+            sampler,
+            bind_group_layout,
         })
     }
 
-    /// Initialize the glow shader program (must be called with gl context)
-    pub fn init_shader(&mut self, gl: &glow::Context) {
-        if self.invert_program.is_none() {
-            self.invert_program = Some(unsafe { create_invert_program(gl) });
-        }
-    }
-
-    /// Process input texture with RGB inversion, render to output texture
-    /// Uses glow (same WebGL2 context) for actual rendering
+    /// Process input texture with RGB inversion using wgpu
     pub fn invert(
-        &mut self,
-        gl: &glow::Context,
-        input_handle: TextureKey,
-        output_handle: TextureKey,
+        &self,
+        input_raw: web_sys::WebGlTexture,
+        output_raw: web_sys::WebGlTexture,
         width: u32,
         height: u32,
     ) {
-        self.init_shader(gl);
+        // Wrap raw WebGL textures as wgpu textures
+        let input_texture = self.wrap_raw_texture(input_raw, width, height, false);
+        let output_texture = self.wrap_raw_texture(output_raw, width, height, true);
 
-        use glow::HasContext;
+        let input_view = input_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        // Create bind group for this frame
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Invert Bind Group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&input_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+            ],
+        });
+
+        // Create command encoder and render pass
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Invert Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Invert Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &output_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(&self.invert_pipeline);
+            render_pass.set_bind_group(0, &bind_group, &[]);
+            render_pass.draw(0..6, 0..1);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// Wrap a raw WebGL texture as a wgpu texture
+    fn wrap_raw_texture(
+        &self,
+        raw_texture: web_sys::WebGlTexture,
+        width: u32,
+        height: u32,
+        is_render_target: bool,
+    ) -> wgpu::Texture {
+        let desc = wgpu::TextureDescriptor {
+            label: Some("Wrapped WebGL Texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: if is_render_target {
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING
+            } else {
+                wgpu::TextureUsages::TEXTURE_BINDING
+            },
+            view_formats: &[],
+        };
+
+        // Convert TextureDescriptor to hal format
+        let hal_desc = hal::TextureDescriptor {
+            label: desc.label,
+            size: desc.size,
+            mip_level_count: desc.mip_level_count,
+            sample_count: desc.sample_count,
+            dimension: desc.dimension,
+            format: desc.format,
+            usage: hal::TextureUses::from_bits(desc.usage.bits() as u16).unwrap_or(hal::TextureUses::empty()),
+            memory_flags: hal::MemoryFlags::empty(),
+            view_formats: vec![],
+        };
+
+        let format_desc = hal::gles::TextureFormatDesc::rgba8_srgb();
+
+        // Access hal device to get glow context and register raw texture
         unsafe {
-
-            // Create framebuffer and attach output texture
-            let fbo = gl.create_framebuffer().unwrap();
-            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
-            gl.framebuffer_texture_2d(
-                glow::FRAMEBUFFER,
-                glow::COLOR_ATTACHMENT0,
-                glow::TEXTURE_2D,
-                Some(output_handle),
-                0,
-            );
-
-            // Set viewport
-            gl.viewport(0, 0, width as i32, height as i32);
-
-            // Use our shader program
-            let program = self.invert_program.unwrap();
-            gl.use_program(Some(program));
-
-            // Bind input texture
-            gl.active_texture(glow::TEXTURE0);
-            gl.bind_texture(glow::TEXTURE_2D, Some(input_handle));
-            let loc = gl.get_uniform_location(program, "u_texture");
-            gl.uniform_1_i32(loc.as_ref(), 0);
-
-            // Create VAO and VBO for fullscreen quad
-            let vao = gl.create_vertex_array().unwrap();
-            gl.bind_vertex_array(Some(vao));
-
-            let vbo = gl.create_buffer().unwrap();
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-
-            #[rustfmt::skip]
-            let vertices: [f32; 24] = [
-                // pos      // uv
-                -1.0, -1.0, 0.0, 0.0,
-                 1.0, -1.0, 1.0, 0.0,
-                 1.0,  1.0, 1.0, 1.0,
-                -1.0, -1.0, 0.0, 0.0,
-                 1.0,  1.0, 1.0, 1.0,
-                -1.0,  1.0, 0.0, 1.0,
-            ];
-
-            gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                bytemuck::cast_slice(&vertices),
-                glow::STATIC_DRAW,
-            );
-
-            // Position attribute
-            gl.enable_vertex_attrib_array(0);
-            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 16, 0);
-
-            // UV attribute
-            gl.enable_vertex_attrib_array(1);
-            gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
-
-            // Draw
-            gl.draw_arrays(glow::TRIANGLES, 0, 6);
-
-            // Cleanup temporary resources
-            gl.delete_buffer(vbo);
-            gl.delete_vertex_array(vao);
-
-            // Restore state
-            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-            gl.delete_framebuffer(fbo);
+            self.device.as_hal::<hal::api::Gles, _, _>(|hal_device| {
+                let hal_device = hal_device.expect("Failed to get hal device");
+                let gl = hal_device.glow_context();
+                let hal_texture = hal::gles::Texture::from_raw_webgl(gl, raw_texture, &hal_desc, format_desc);
+                self.device.create_texture_from_hal::<hal::api::Gles>(hal_texture, &desc)
+            }).expect("Failed to access hal device")
         }
     }
-}
-
-impl Drop for WgpuProcessor {
-    fn drop(&mut self) {
-        // Note: We can't clean up the glow program here since we don't have gl context
-        // In a real app, you'd want to handle this properly
-    }
-}
-
-unsafe fn create_invert_program(gl: &glow::Context) -> glow::Program {
-    use glow::HasContext;
-
-    let vert_src = r#"#version 300 es
-        layout(location = 0) in vec2 a_pos;
-        layout(location = 1) in vec2 a_uv;
-        out vec2 v_uv;
-        void main() {
-            v_uv = a_uv;
-            gl_Position = vec4(a_pos, 0.0, 1.0);
-        }
-    "#;
-
-    let frag_src = r#"#version 300 es
-        precision mediump float;
-        in vec2 v_uv;
-        out vec4 color;
-        uniform sampler2D u_texture;
-        void main() {
-            vec4 c = texture(u_texture, v_uv);
-            color = vec4(1.0 - c.rgb, c.a);
-        }
-    "#;
-
-    let program = gl.create_program().unwrap();
-
-    let vert = gl.create_shader(glow::VERTEX_SHADER).unwrap();
-    gl.shader_source(vert, vert_src);
-    gl.compile_shader(vert);
-    if !gl.get_shader_compile_status(vert) {
-        panic!("Vertex shader error: {}", gl.get_shader_info_log(vert));
-    }
-
-    let frag = gl.create_shader(glow::FRAGMENT_SHADER).unwrap();
-    gl.shader_source(frag, frag_src);
-    gl.compile_shader(frag);
-    if !gl.get_shader_compile_status(frag) {
-        panic!("Fragment shader error: {}", gl.get_shader_info_log(frag));
-    }
-
-    gl.attach_shader(program, vert);
-    gl.attach_shader(program, frag);
-    gl.link_program(program);
-    if !gl.get_program_link_status(program) {
-        panic!("Program link error: {}", gl.get_program_info_log(program));
-    }
-
-    gl.delete_shader(vert);
-    gl.delete_shader(frag);
-
-    program
 }

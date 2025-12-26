@@ -74,21 +74,20 @@ fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
         gfx.render_to(&state.texture1, &renderer);
     }
 
-    // === 2. Process texture1 -> texture2 with RGB inversion (wgpu/glow) ===
+    // === 2. Process texture1 -> texture2 with RGB inversion (wgpu) ===
     {
         let backend = gfx.device.downcast_backend::<GlowBackend>().unwrap();
 
-        let input_handle = backend
-            .get_texture_handle(state.texture1.texture().id())
-            .expect("Failed to get texture1 handle");
-        let output_handle = backend
-            .get_texture_handle(state.texture2.texture().id())
-            .expect("Failed to get texture2 handle");
+        let input_raw = backend
+            .get_raw_texture(state.texture1.texture().id())
+            .expect("Failed to get texture1 raw handle");
+        let output_raw = backend
+            .get_raw_texture(state.texture2.texture().id())
+            .expect("Failed to get texture2 raw handle");
 
         state.wgpu_processor.invert(
-            &backend.gl,
-            input_handle,
-            output_handle,
+            input_raw,
+            output_raw,
             WIDTH,
             HEIGHT,
         );

@@ -2,9 +2,9 @@ use crate::to_glow::*;
 use glow::*;
 use notan_graphics::prelude::*;
 
-pub(crate) type TextureKey = <glow::Context as glow::HasContext>::Texture;
+pub type TextureKey = <glow::Context as glow::HasContext>::Texture;
 
-pub(crate) struct InnerTexture {
+pub struct InnerTexture {
     pub texture: TextureKey,
     pub size: (u32, u32),
     pub use_mipmaps: bool,

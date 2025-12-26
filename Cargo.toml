@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+exclude = ["crates/wgpu-patched"]
 resolver = "2"
 
 [workspace.package]
@@ -45,3 +46,10 @@ wasm-bindgen-futures = "0.4"
 futures-util = "0.3"
 web-sys = "0.3"
 js-sys = "0.3"
+
+[patch.crates-io]
+wgpu = { path = "crates/wgpu-patched/wgpu" }
+wgpu-hal = { path = "crates/wgpu-patched/wgpu-hal" }
+wgpu-core = { path = "crates/wgpu-patched/wgpu-core" }
+wgpu-types = { path = "crates/wgpu-patched/wgpu-types" }
+naga = { path = "crates/wgpu-patched/naga" }

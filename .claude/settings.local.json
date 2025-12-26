@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(trunk build:*)"
+      "Bash(trunk build:*)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

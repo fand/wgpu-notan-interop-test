@@ -31,3 +31,5 @@ web-sys = { version = "0.3", features = [
 console_error_panic_hook = "0.1"
 console_log = "1.0"
 wgpu = { version = "23", features = ["webgl"] }
+glow = "0.16"
+downcast-rs = "2.0"

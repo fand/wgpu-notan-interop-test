@@ -4,73 +4,107 @@ use notan_app::prelude::*;
 use notan_app::{AppBuilder, WindowConfig};
 use notan_graphics::color::Color;
 use notan_graphics::prelude::*;
+use notan_glow::GlowBackend;
 use notan_web::WebBackend;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-// Notan shaders (GLSL 450 -> SPIR-V -> WebGL2)
+const WIDTH: u32 = 512;
+const HEIGHT: u32 = 512;
+
+// Notan shaders for rendering textures
 //language=glsl
-const NOTAN_VERT: ShaderSource = notan_macro::vertex_shader! {
+const TEXTURE_VERT: ShaderSource = notan_macro::vertex_shader! {
     r#"
     #version 450
     layout(location = 0) in vec2 a_pos;
+    layout(location = 1) in vec2 a_uv;
+    layout(location = 0) out vec2 v_uv;
 
     void main() {
+        v_uv = a_uv;
         gl_Position = vec4(a_pos, 0.0, 1.0);
     }
     "#
 };
 
 //language=glsl
-const NOTAN_FRAG: ShaderSource = notan_macro::fragment_shader! {
+const TEXTURE_FRAG: ShaderSource = notan_macro::fragment_shader! {
     r#"
     #version 450
     precision mediump float;
 
+    layout(location = 0) in vec2 v_uv;
     layout(location = 0) out vec4 color;
 
-    layout(set = 0, binding = 0) uniform Locals {
-        float u_time;
-    };
+    layout(set = 0, binding = 0) uniform sampler2D u_texture;
 
     void main() {
-        float r = sin(u_time * 0.7) * 0.5 + 0.5;
-        float g = sin(u_time * 1.1) * 0.5 + 0.5;
-        float b = sin(u_time * 1.3) * 0.5 + 0.5;
-        color = vec4(r * 0.3, g * 0.3, b * 0.5, 1.0);
+        color = texture(u_texture, v_uv);
     }
     "#
 };
 
 struct State {
-    // Notan resources
-    notan_pipeline: Pipeline,
-    notan_vbo: Buffer,
-    notan_ubo: Buffer,
+    // Textures
+    ferris: Texture,
+    texture1: RenderTexture,
+    texture2: RenderTexture,
 
-    // wgpu resources
-    wgpu: wgpu::WgpuResources,
+    // Notan resources
+    texture_pipeline: Pipeline,
+    quad_vbo: Buffer,
+
+    // wgpu processor
+    wgpu_processor: wgpu::WgpuProcessor,
 }
 
 impl AppState for State {}
 
-fn draw(app: &mut App, gfx: &mut Graphics, state: &mut State) {
-    let t = app.timer.elapsed_f32();
+fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
+    // === 1. Render ferris to texture1 using Notan ===
+    {
+        let mut renderer = gfx.create_renderer();
+        renderer.begin(Some(ClearOptions::color(Color::TRANSPARENT)));
+        renderer.set_pipeline(&state.texture_pipeline);
+        renderer.bind_texture(0, &state.ferris);
+        renderer.bind_buffer(&state.quad_vbo);
+        renderer.draw(0, 6);
+        renderer.end();
+        gfx.render_to(&state.texture1, &renderer);
+    }
 
-    // === 1. Draw background with Notan ===
-    gfx.set_buffer_data(&state.notan_ubo, &[t]);
+    // === 2. Process texture1 -> texture2 with RGB inversion (wgpu/glow) ===
+    {
+        let backend = gfx.device.downcast_backend::<GlowBackend>().unwrap();
 
-    let mut renderer = gfx.create_renderer();
-    renderer.begin(Some(ClearOptions::color(Color::BLACK)));
-    renderer.set_pipeline(&state.notan_pipeline);
-    renderer.bind_buffer(&state.notan_vbo);
-    renderer.bind_buffer(&state.notan_ubo);
-    renderer.draw(0, 6);
-    renderer.end();
-    gfx.render(&renderer);
+        let input_handle = backend
+            .get_texture_handle(state.texture1.texture().id())
+            .expect("Failed to get texture1 handle");
+        let output_handle = backend
+            .get_texture_handle(state.texture2.texture().id())
+            .expect("Failed to get texture2 handle");
 
-    // === 2. Draw red rectangle with wgpu ===
-    wgpu::draw(&state.wgpu);
+        state.wgpu_processor.invert(
+            &backend.gl,
+            input_handle,
+            output_handle,
+            WIDTH,
+            HEIGHT,
+        );
+    }
+
+    // === 3. Render texture2 to screen using Notan ===
+    {
+        let mut renderer = gfx.create_renderer();
+        renderer.begin(Some(ClearOptions::color(Color::BLACK)));
+        renderer.set_pipeline(&state.texture_pipeline);
+        renderer.bind_texture(0, state.texture2.texture());
+        renderer.bind_buffer(&state.quad_vbo);
+        renderer.draw(0, 6);
+        renderer.end();
+        gfx.render(&renderer);
+    }
 }
 
 fn get_canvas() -> Result<web_sys::HtmlCanvasElement, JsValue> {
@@ -93,48 +127,81 @@ fn get_webgl2_context(
         .map_err(|_| JsValue::from_str("Failed to cast to WebGl2RenderingContext"))
 }
 
-fn setup_notan(gfx: &mut Graphics) -> (Pipeline, Buffer, Buffer) {
-    let vertex_info = VertexInfo::new().attr(0, VertexFormat::Float32x2);
-
-    let pipeline = gfx
-        .create_pipeline()
-        .from(&NOTAN_VERT, &NOTAN_FRAG)
-        .with_vertex_info(&vertex_info)
+fn setup(gfx: &mut Graphics, wgpu_processor: wgpu::WgpuProcessor) -> State {
+    // Load ferris.png
+    let ferris_bytes = include_bytes!("../ferris.png");
+    let ferris = gfx
+        .create_texture()
+        .from_image(ferris_bytes)
         .build()
-        .unwrap();
+        .expect("Failed to load ferris.png");
 
-    // Fullscreen quad
+    // Create render textures
+    let texture1 = gfx
+        .create_render_texture(WIDTH, HEIGHT)
+        .build()
+        .expect("Failed to create texture1");
+
+    let texture2 = gfx
+        .create_render_texture(WIDTH, HEIGHT)
+        .build()
+        .expect("Failed to create texture2");
+
+    // Create texture rendering pipeline
+    let vertex_info = VertexInfo::new()
+        .attr(0, VertexFormat::Float32x2) // position
+        .attr(1, VertexFormat::Float32x2); // uv
+
+    let texture_pipeline = gfx
+        .create_pipeline()
+        .from(&TEXTURE_VERT, &TEXTURE_FRAG)
+        .with_vertex_info(&vertex_info)
+        .with_texture_location(0, "u_texture")
+        .build()
+        .expect("Failed to create texture pipeline");
+
+    // Fullscreen quad with UVs
     #[rustfmt::skip]
-    let vertices: [f32; 12] = [
-        -1.0, -1.0,
-         1.0, -1.0,
-         1.0,  1.0,
-        -1.0, -1.0,
-         1.0,  1.0,
-        -1.0,  1.0,
+    let vertices: [f32; 24] = [
+        // pos      // uv
+        -1.0, -1.0, 0.0, 0.0,
+         1.0, -1.0, 1.0, 0.0,
+         1.0,  1.0, 1.0, 1.0,
+        -1.0, -1.0, 0.0, 0.0,
+         1.0,  1.0, 1.0, 1.0,
+        -1.0,  1.0, 0.0, 1.0,
     ];
 
-    let vbo = gfx
+    let quad_vbo = gfx
         .create_vertex_buffer()
         .with_info(&vertex_info)
         .with_data(&vertices)
         .build()
-        .unwrap();
+        .expect("Failed to create quad VBO");
 
-    let ubo = gfx
-        .create_uniform_buffer(0, "Locals")
-        .with_data(&[0.0f32])
-        .build()
-        .unwrap();
-
-    (pipeline, vbo, ubo)
+    State {
+        ferris,
+        texture1,
+        texture2,
+        texture_pipeline,
+        quad_vbo,
+        wgpu_processor,
+    }
 }
 
 async fn run() -> Result<(), JsValue> {
     let canvas = get_canvas()?;
 
-    // Initialize wgpu
-    let wgpu_resources = wgpu::init_wgpu(canvas.clone()).await?;
+    // Set canvas size
+    let window = web_sys::window().unwrap();
+    let dpi = window.device_pixel_ratio();
+    let width = (canvas.client_width() as f64 * dpi) as u32;
+    let height = (canvas.client_height() as f64 * dpi) as u32;
+    canvas.set_width(width);
+    canvas.set_height(height);
+
+    // Initialize wgpu processor first (before Notan takes the context)
+    let wgpu_processor = wgpu::WgpuProcessor::new(&canvas).await?;
 
     // Get WebGL2 context and create notan backend
     let webgl2_ctx = get_webgl2_context(&canvas)?;
@@ -144,15 +211,7 @@ async fn run() -> Result<(), JsValue> {
     let win_config = WindowConfig::default().set_app_id("notan");
 
     AppBuilder::new(
-        move |gfx: &mut Graphics| {
-            let (notan_pipeline, notan_vbo, notan_ubo) = setup_notan(gfx);
-            State {
-                notan_pipeline,
-                notan_vbo,
-                notan_ubo,
-                wgpu: wgpu_resources,
-            }
-        },
+        move |gfx: &mut Graphics| setup(gfx, wgpu_processor),
         backend,
     )
     .add_config(win_config)

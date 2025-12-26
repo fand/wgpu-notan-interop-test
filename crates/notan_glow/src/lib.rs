@@ -19,13 +19,13 @@ mod html_image;
 
 use crate::buffer::Kind;
 use crate::pipeline::get_inner_attrs;
-use crate::texture::{texture_format, texture_type, TextureKey};
+use crate::texture::{texture_format, texture_type};
+pub use crate::texture::{TextureKey, InnerTexture};
 use crate::texture_source::{add_empty_texture, add_texture_from_bytes, add_texture_from_image};
 use crate::to_glow::ToGlow;
 use buffer::InnerBuffer;
 use pipeline::{InnerPipeline, VertexAttributes};
 use render_target::InnerRenderTexture;
-use texture::InnerTexture;
 
 pub struct GlowBackend {
     pub gl: Context,
@@ -655,6 +655,33 @@ impl DeviceBackend for GlowBackend {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+// Public texture handle accessors
+impl GlowBackend {
+    /// Get raw glow::Texture handle from Notan texture ID
+    pub fn get_texture_handle(&self, texture_id: u64) -> Option<TextureKey> {
+        self.textures.get(&texture_id).map(|t| t.texture)
+    }
+
+    /// Register an external texture (created outside of Notan)
+    pub fn register_external_texture(
+        &mut self,
+        handle: TextureKey,
+        width: u32,
+        height: u32,
+        use_mipmaps: bool,
+    ) -> u64 {
+        let id = self.texture_count;
+        self.texture_count += 1;
+        let inner = texture::InnerTexture {
+            texture: handle,
+            size: (width, height),
+            use_mipmaps,
+        };
+        self.textures.insert(id, inner);
+        id
     }
 }
 

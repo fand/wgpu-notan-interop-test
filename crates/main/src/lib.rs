@@ -1,49 +1,93 @@
 use notan_app::prelude::*;
 use notan_app::{AppBuilder, WindowConfig};
+use notan_graphics::color::Color;
+use notan_graphics::prelude::*;
 use notan_web::WebBackend;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use std::sync::Arc;
 
-struct WgpuState {
-    surface: wgpu::Surface<'static>,
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    config: wgpu::SurfaceConfiguration,
+// Notan shaders (GLSL 450 -> SPIR-V -> WebGL2)
+//language=glsl
+const NOTAN_VERT: ShaderSource = notan_macro::vertex_shader! {
+    r#"
+    #version 450
+    layout(location = 0) in vec2 a_pos;
+
+    void main() {
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+    }
+    "#
+};
+
+//language=glsl
+const NOTAN_FRAG: ShaderSource = notan_macro::fragment_shader! {
+    r#"
+    #version 450
+    precision mediump float;
+
+    layout(location = 0) out vec4 color;
+
+    layout(set = 0, binding = 0) uniform Locals {
+        float u_time;
+    };
+
+    void main() {
+        float r = sin(u_time * 0.7) * 0.5 + 0.5;
+        float g = sin(u_time * 1.1) * 0.5 + 0.5;
+        float b = sin(u_time * 1.3) * 0.5 + 0.5;
+        color = vec4(r * 0.3, g * 0.3, b * 0.5, 1.0);
+    }
+    "#
+};
+
+struct State {
+    // Notan resources
+    notan_pipeline: Pipeline,
+    notan_vbo: Buffer,
+    notan_ubo: Buffer,
+
+    // wgpu resources
+    wgpu_surface: wgpu::Surface<'static>,
+    wgpu_device: Arc<wgpu::Device>,
+    wgpu_queue: Arc<wgpu::Queue>,
+    wgpu_pipeline: wgpu::RenderPipeline,
+    wgpu_vertex_buffer: wgpu::Buffer,
 }
 
-impl AppState for WgpuState {}
+impl AppState for State {}
 
-fn draw(app: &mut App, state: &mut WgpuState) {
+fn draw(app: &mut App, gfx: &mut Graphics, state: &mut State) {
     let t = app.timer.elapsed_f32();
 
-    let frame = state.surface.get_current_texture().unwrap();
+    // === 1. Draw background with Notan ===
+    gfx.set_buffer_data(&state.notan_ubo, &[t]);
+
+    let mut renderer = gfx.create_renderer();
+    renderer.begin(Some(ClearOptions::color(Color::BLACK)));
+    renderer.set_pipeline(&state.notan_pipeline);
+    renderer.bind_buffer(&state.notan_vbo);
+    renderer.bind_buffer(&state.notan_ubo);
+    renderer.draw(0, 6);
+    renderer.end();
+    gfx.render(&renderer);
+
+    // === 2. Draw red rectangle with wgpu (preserve existing content) ===
+    let frame = state.wgpu_surface.get_current_texture().unwrap();
     let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Render Encoder"),
+    let mut encoder = state.wgpu_device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("wgpu Encoder"),
     });
-
-    // Animate background color
-    let r = (t * 0.3).sin() * 0.3 + 0.2;
-    let g = (t * 0.5).sin() * 0.3 + 0.3;
-    let b = (t * 0.7).sin() * 0.3 + 0.4;
 
     {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
+            label: Some("wgpu Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: r as f64,
-                        g: g as f64,
-                        b: b as f64,
-                        a: 1.0,
-                    }),
+                    load: wgpu::LoadOp::Load, // Keep notan's background
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -52,12 +96,12 @@ fn draw(app: &mut App, state: &mut WgpuState) {
             occlusion_query_set: None,
         });
 
-        render_pass.set_pipeline(&state.pipeline);
-        render_pass.set_vertex_buffer(0, state.vertex_buffer.slice(..));
+        render_pass.set_pipeline(&state.wgpu_pipeline);
+        render_pass.set_vertex_buffer(0, state.wgpu_vertex_buffer.slice(..));
         render_pass.draw(0..6, 0..1);
     }
 
-    state.queue.submit(std::iter::once(encoder.finish()));
+    state.wgpu_queue.submit(std::iter::once(encoder.finish()));
     frame.present();
 }
 
@@ -81,20 +125,20 @@ fn get_webgl2_context(
         .map_err(|_| JsValue::from_str("Failed to cast to WebGl2RenderingContext"))
 }
 
-fn create_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
+fn create_wgpu_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("Shader"),
+        label: Some("wgpu Shader"),
         source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
     });
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Pipeline Layout"),
+        label: Some("wgpu Pipeline Layout"),
         bind_group_layouts: &[],
         push_constant_ranges: &[],
     });
 
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
+        label: Some("wgpu Pipeline"),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
@@ -136,26 +180,61 @@ fn create_pipeline(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::
     })
 }
 
-fn create_vertex_buffer(device: &wgpu::Device) -> wgpu::Buffer {
+fn create_wgpu_vertex_buffer(device: &wgpu::Device) -> wgpu::Buffer {
     use wgpu::util::DeviceExt;
 
-    // Red rectangle in center (normalized device coordinates)
+    // Red rectangle in center
     let vertices: &[f32] = &[
-        // Triangle 1
         -0.5, -0.5,
          0.5, -0.5,
          0.5,  0.5,
-        // Triangle 2
         -0.5, -0.5,
          0.5,  0.5,
         -0.5,  0.5,
     ];
 
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Vertex Buffer"),
+        label: Some("wgpu Vertex Buffer"),
         contents: bytemuck::cast_slice(vertices),
         usage: wgpu::BufferUsages::VERTEX,
     })
+}
+
+fn setup_notan(gfx: &mut Graphics) -> (Pipeline, Buffer, Buffer) {
+    let vertex_info = VertexInfo::new().attr(0, VertexFormat::Float32x2);
+
+    let pipeline = gfx
+        .create_pipeline()
+        .from(&NOTAN_VERT, &NOTAN_FRAG)
+        .with_vertex_info(&vertex_info)
+        .build()
+        .unwrap();
+
+    // Fullscreen quad
+    #[rustfmt::skip]
+    let vertices: [f32; 12] = [
+        -1.0, -1.0,
+         1.0, -1.0,
+         1.0,  1.0,
+        -1.0, -1.0,
+         1.0,  1.0,
+        -1.0,  1.0,
+    ];
+
+    let vbo = gfx
+        .create_vertex_buffer()
+        .with_info(&vertex_info)
+        .with_data(&vertices)
+        .build()
+        .unwrap();
+
+    let ubo = gfx
+        .create_uniform_buffer(0, "Locals")
+        .with_data(&[0.0f32])
+        .build()
+        .unwrap();
+
+    (pipeline, vbo, ubo)
 }
 
 async fn run() -> Result<(), JsValue> {
@@ -220,29 +299,40 @@ async fn run() -> Result<(), JsValue> {
     };
     surface.configure(&device, &config);
 
-    let pipeline = create_pipeline(&device, format);
-    let vertex_buffer = create_vertex_buffer(&device);
+    let wgpu_pipeline = create_wgpu_pipeline(&device, format);
+    let wgpu_vertex_buffer = create_wgpu_vertex_buffer(&device);
 
+    // Get WebGL2 context and create notan backend
     let webgl2_ctx = get_webgl2_context(&canvas)?;
     let backend =
         WebBackend::with_webgl2_context(webgl2_ctx).map_err(|e| JsValue::from_str(&e))?;
 
     let win_config = WindowConfig::default().set_app_id("notan");
 
-    let wgpu_state = WgpuState {
-        surface,
-        device,
-        queue,
-        pipeline,
-        vertex_buffer,
-        config,
-    };
+    let wgpu_surface = surface;
+    let wgpu_device = device;
+    let wgpu_queue = queue;
 
-    AppBuilder::new(move || wgpu_state, backend)
-        .add_config(win_config)
-        .draw(draw)
-        .build()
-        .map_err(|e| JsValue::from_str(&e))?;
+    AppBuilder::new(
+        move |gfx: &mut Graphics| {
+            let (notan_pipeline, notan_vbo, notan_ubo) = setup_notan(gfx);
+            State {
+                notan_pipeline,
+                notan_vbo,
+                notan_ubo,
+                wgpu_surface,
+                wgpu_device,
+                wgpu_queue,
+                wgpu_pipeline,
+                wgpu_vertex_buffer,
+            }
+        },
+        backend,
+    )
+    .add_config(win_config)
+    .draw(draw)
+    .build()
+    .map_err(|e| JsValue::from_str(&e))?;
 
     Ok(())
 }

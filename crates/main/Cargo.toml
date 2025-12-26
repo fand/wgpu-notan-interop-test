@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 notan_core = { path = "../notan_core" }
 notan_app = { path = "../notan_app" }
-notan_macro = { path = "../notan_macro" }
+notan_macro = { path = "../notan_macro", features = ["glsl-to-spirv"] }
 notan_graphics = { path = "../notan_graphics" }
 notan_glow = { path = "../notan_glow" }
 notan_web = { path = "../notan_web" }

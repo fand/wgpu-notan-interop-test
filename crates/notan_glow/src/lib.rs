@@ -60,6 +60,15 @@ impl GlowBackend {
         Self::from(gl, &api)
     }
 
+    /// Create from external WebGL2 context
+    #[cfg(target_arch = "wasm32")]
+    pub fn from_webgl2_context(
+        webgl2_ctx: web_sys::WebGl2RenderingContext,
+    ) -> Result<Self, String> {
+        let gl = glow::Context::from_webgl2_context(webgl2_ctx);
+        Self::from(gl, "webgl2")
+    }
+
     #[cfg(all(
         not(target_arch = "wasm32"),
         not(target_os = "ios"),

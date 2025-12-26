@@ -20,6 +20,7 @@ pub struct WebBackend {
     window: Option<WebWindowBackend>,
     events: Rc<RefCell<EventIterator>>,
     exit_requested: bool,
+    external_webgl2_ctx: Option<web_sys::WebGl2RenderingContext>,
 }
 
 impl WebBackend {
@@ -31,6 +32,22 @@ impl WebBackend {
             window: None,
             events,
             exit_requested: false,
+            external_webgl2_ctx: None,
+        })
+    }
+
+    /// Create with external WebGL2 context (for sharing with wgpu)
+    pub fn with_webgl2_context(
+        webgl2_ctx: web_sys::WebGl2RenderingContext,
+    ) -> Result<Self, String> {
+        std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+        let events = Rc::new(RefCell::new(EventIterator::new()));
+
+        Ok(Self {
+            window: None,
+            events,
+            exit_requested: false,
+            external_webgl2_ctx: Some(webgl2_ctx),
         })
     }
 }
@@ -114,8 +131,11 @@ impl BackendSystem for WebBackend {
 
     fn get_graphics_backend(&self) -> Box<dyn DeviceBackend> {
         let win = self.window.as_ref().unwrap();
-        let backend =
-            notan_glow::GlowBackend::new(&win.canvas, win.antialias, win.transparent).unwrap();
+        let backend = if let Some(ctx) = &self.external_webgl2_ctx {
+            notan_glow::GlowBackend::from_webgl2_context(ctx.clone()).unwrap()
+        } else {
+            notan_glow::GlowBackend::new(&win.canvas, win.antialias, win.transparent).unwrap()
+        };
         Box::new(backend)
     }
 

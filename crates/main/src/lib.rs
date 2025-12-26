@@ -1,5 +1,5 @@
 use notan_app::prelude::*;
-use notan_app::AppBuilder;
+use notan_app::{AppBuilder, WindowConfig};
 use notan_graphics::color::Color;
 use notan_graphics::prelude::*;
 use notan_web::WebBackend;
@@ -47,7 +47,11 @@ pub fn start() -> Result<(), JsValue> {
     let backend = WebBackend::with_webgl2_context(webgl2_ctx)
         .map_err(|e| JsValue::from_str(&e))?;
 
+    // 4. Set app_id to match the canvas id
+    let win_config = WindowConfig::default().set_app_id("notan");
+
     AppBuilder::new(|| {}, backend)
+        .add_config(win_config)
         .draw(draw)
         .build()
         .map_err(|e| JsValue::from_str(&e))?;

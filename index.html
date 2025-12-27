@@ -1,25 +1,53 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>wgpu-notan-test</title>
-    <link data-trunk rel="rust" data-wasm-opt="z" data-cargo-features="" href="crates/main" />
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: #1a1a2e;
-        }
-        canvas {
-            border: 2px solid #333;
-        }
-    </style>
-</head>
-<body>
+<meta charset="utf-8" />
+<title>wgpu-notan-test</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link
+    data-trunk
+    rel="rust"
+    data-wasm-opt="z"
+    data-cargo-features=""
+    href="crates/main"
+/>
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: #000;
+        flex-direction: column;
+        padding: 16px;
+    }
+    canvas {
+        border: 1px solid #333;
+        max-width: 100%;
+        height: auto !important;
+    }
+    .canvas-wrapper {
+        max-width: 100%;
+        aspect-ratio: 4/3;
+    }
+
+    section {
+        color: white;
+    }
+</style>
+
+<div class="canvas-wrapper">
     <canvas id="notan"></canvas>
-</body>
-</html>
+</div>
+
+<section>
+    <p>This is a demo of notan-wgpu interop. Here's how it's rendered:</p>
+    <ul>
+        <li>Step 1: In notan, blit the image to RenderTexture 1</li>
+        <li>
+            Step 2: In wgpu, apply hue rotation animation and blit to
+            RenderTexture 2
+        </li>
+        <li>Step 3: In notan, apply vertex animation and blit to canvas</li>
+    </ul>
+</section>

@@ -53,4 +53,4 @@ wgpu-hal = { path = "crates/wgpu-patched/wgpu-hal" }
 wgpu-core = { path = "crates/wgpu-patched/wgpu-core" }
 wgpu-types = { path = "crates/wgpu-patched/wgpu-types" }
 naga = { path = "crates/wgpu-patched/naga" }
-glow = { path = "crates/wgpu-patched/glow" }
+glow = { path = "crates/glow-patched" }

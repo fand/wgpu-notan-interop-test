@@ -1,0 +1,8 @@
+[submodule "crates/wgpu-patched"]
+	path = crates/wgpu-patched
+	url = git@github.com:fand/wgpu.git
+	branch = notan-wgpu-integration
+[submodule "crates/glow-patched"]
+	path = crates/glow-patched
+	url = git@github.com:fand/glow.git
+	branch = notan-wgpu-integration

@@ -7,13 +7,13 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-notan_core = { path = "../notan/crates/notan_core" }
-notan_app = { path = "../notan/crates/notan_app" }
-notan_macro = { path = "../notan/crates/notan_macro" }
-notan_graphics = { path = "../notan/crates/notan_graphics" }
-notan_glow = { path = "../notan/crates/notan_glow" }
-notan_web = { path = "../notan/crates/notan_web" }
-notan_log = { path = "../notan/crates/notan_log" }
+notan_core = { path = "../notan-patched/crates/notan_core" }
+notan_app = { path = "../notan-patched/crates/notan_app" }
+notan_macro = { path = "../notan-patched/crates/notan_macro" }
+notan_graphics = { path = "../notan-patched/crates/notan_graphics" }
+notan_glow = { path = "../notan-patched/crates/notan_glow" }
+notan_web = { path = "../notan-patched/crates/notan_web" }
+notan_log = { path = "../notan-patched/crates/notan_log" }
 
 log = "0.4"
 bytemuck = "1.21"

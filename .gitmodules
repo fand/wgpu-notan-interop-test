@@ -6,7 +6,7 @@
 	path = crates/glow-patched
 	url = git@github.com:fand/glow.git
 	branch = notan-wgpu-integration
-[submodule "crates/notan"]
-	path = crates/notan
+[submodule "crates/notan-patched"]
+	path = crates/notan-patched
 	url = git@github.com:fand/notan.git
 	branch = notan-wgpu-integration

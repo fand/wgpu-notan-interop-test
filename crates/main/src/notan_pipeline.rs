@@ -15,12 +15,15 @@ void main() {
 
 // Animated vertex shader
 const ANIMATED_VERT_SRC: &[u8] = br#"#version 300 es
+precision mediump float;
+
 in vec2 a_pos;
 in vec2 a_uv;
 out vec2 v_uv;
 
 layout(std140) uniform Locals {
     float u_time;
+    float u_flip_y;
 };
 
 void main() {
@@ -41,8 +44,14 @@ out vec4 color;
 
 uniform sampler2D u_texture;
 
+layout(std140) uniform Locals {
+    float u_time;
+    float u_flip_y;
+};
+
 void main() {
-    color = texture(u_texture, v_uv);
+    vec2 uv = u_flip_y > 0.5 ? vec2(v_uv.x, 1.0 - v_uv.y) : v_uv;
+    color = texture(u_texture, uv);
 }
 "#;
 
@@ -62,7 +71,7 @@ pub struct NotanPipelines {
     pub static_pipeline: Pipeline,   // Step1用
     pub animated_pipeline: Pipeline, // Step3用
     pub quad_vbo: Buffer,
-    pub time_ubo: Buffer,
+    pub ubo: Buffer,
 }
 
 pub fn create_pipelines(gfx: &mut Graphics) -> NotanPipelines {
@@ -111,16 +120,17 @@ pub fn create_pipelines(gfx: &mut Graphics) -> NotanPipelines {
         .build()
         .expect("Failed to create quad VBO");
 
-    let time_ubo = gfx
+    // UBO: [time: f32, flip_y: i32]
+    let ubo = gfx
         .create_uniform_buffer(0, "Locals")
-        .with_data(&[0.0f32])
+        .with_data(&[0.0f32, 0.0f32]) // time, flip_y (as f32 for alignment)
         .build()
-        .expect("Failed to create time UBO");
+        .expect("Failed to create UBO");
 
     NotanPipelines {
         static_pipeline,
         animated_pipeline,
         quad_vbo,
-        time_ubo,
+        ubo,
     }
 }

@@ -34,11 +34,14 @@ impl AppState for State {}
 fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
     // === 1. Render ferris to texture1 using Notan (static) ===
     {
+        // time=0, flip_y=1
+        gfx.set_buffer_data(&state.pipelines.ubo, &[0.0f32, 1.0f32]);
+
         let mut renderer = gfx.create_renderer();
         renderer.begin(Some(ClearOptions::color(Color::TRANSPARENT)));
         renderer.set_pipeline(&state.pipelines.static_pipeline);
         renderer.bind_texture(0, &state.ferris);
-        renderer.bind_buffer(&state.pipelines.quad_vbo);
+        renderer.bind_buffers(&[&state.pipelines.quad_vbo, &state.pipelines.ubo]);
         renderer.draw(0, 6);
         renderer.end();
         gfx.render_to(&state.texture1, &renderer);
@@ -82,8 +85,8 @@ fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
         let now = window.performance().unwrap().now() / 1000.0;
         let time = (now - state.start_time) as f32;
 
-        // Update time uniform buffer
-        gfx.set_buffer_data(&state.pipelines.time_ubo, &[time]);
+        // time=elapsed, flip_y=0
+        gfx.set_buffer_data(&state.pipelines.ubo, &[time, 0.0f32]);
 
         let mut renderer = gfx.create_renderer();
         renderer.set_size(width, height);
@@ -91,10 +94,7 @@ fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
         renderer.set_scissors(0.0, 0.0, width as f32, height as f32);
         renderer.set_pipeline(&state.pipelines.animated_pipeline);
         renderer.bind_texture(0, state.texture2.texture());
-        renderer.bind_buffers(&[
-            &state.pipelines.quad_vbo,
-            &state.pipelines.time_ubo,
-        ]);
+        renderer.bind_buffers(&[&state.pipelines.quad_vbo, &state.pipelines.ubo]);
         renderer.draw(0, 6);
         renderer.end();
         gfx.render(&renderer);

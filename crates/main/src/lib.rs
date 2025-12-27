@@ -68,8 +68,11 @@ fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
 
     // === 3. Render texture2 to screen using Notan ===
     {
+        let (width, height) = gfx.device.size();
         let mut renderer = gfx.create_renderer();
+        renderer.set_size(width, height);
         renderer.begin(Some(ClearOptions::color(Color::BLACK)));
+        renderer.set_scissors(0.0, 0.0, width as f32, height as f32);
         renderer.set_pipeline(&state.texture_pipeline);
         renderer.bind_texture(0, state.texture2.texture());
         renderer.bind_buffer(&state.quad_vbo);
@@ -167,7 +170,7 @@ async fn run() -> Result<(), JsValue> {
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
-    console_log::init_with_level(log::Level::Info).unwrap();
+    wasm_logger::init(wasm_logger::Config::default());
 
     wasm_bindgen_futures::spawn_local(async {
         if let Err(e) = run().await {

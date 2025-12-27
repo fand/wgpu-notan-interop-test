@@ -15,7 +15,7 @@ pub struct WgpuProcessor {
     pub queue: Arc<wgpu::Queue>,
     pub format: wgpu::TextureFormat,
     // wgpu pipeline resources
-    invert_pipeline: wgpu::RenderPipeline,
+    pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
     time_buffer: wgpu::Buffer,
@@ -65,13 +65,13 @@ impl WgpuProcessor {
 
         // Create shader module
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Invert Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("invert.wgsl").into()),
+            label: Some("Hue Rotate Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("huerot.wgsl").into()),
         });
 
         // Create sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Invert Sampler"),
+            label: Some("Hue Rotate Sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -91,7 +91,7 @@ impl WgpuProcessor {
 
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Invert Bind Group Layout"),
+            label: Some("Hue Rotate Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -124,14 +124,14 @@ impl WgpuProcessor {
 
         // Create pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Invert Pipeline Layout"),
+            label: Some("Hue Rotate Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
             ..Default::default()
         });
 
         // Create render pipeline
-        let invert_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Invert Pipeline"),
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Hue Rotate Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -168,7 +168,7 @@ impl WgpuProcessor {
             device,
             queue,
             format,
-            invert_pipeline,
+            pipeline,
             sampler,
             bind_group_layout,
             time_buffer,
@@ -196,7 +196,7 @@ impl WgpuProcessor {
         let input_view = input_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Invert Bind Group"),
+            label: Some("Hue Rotate Bind Group"),
             layout: &self.bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -233,12 +233,12 @@ impl WgpuProcessor {
         let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Invert Encoder"),
+            label: Some("Hue Rotate Encoder"),
         });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Invert Render Pass"),
+                label: Some("Hue Rotate Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &output_view,
                     resolve_target: None,
@@ -254,7 +254,7 @@ impl WgpuProcessor {
                 multiview_mask: None,
             });
 
-            render_pass.set_pipeline(&self.invert_pipeline);
+            render_pass.set_pipeline(&self.pipeline);
             render_pass.set_bind_group(0, bind_group, &[]);
             render_pass.draw(0..6, 0..1);
         }

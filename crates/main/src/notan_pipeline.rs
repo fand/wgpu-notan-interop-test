@@ -1,8 +1,8 @@
 use notan_app::Graphics;
 use notan_graphics::prelude::*;
 
-// Notan shaders for rendering textures (GLSL 300 ES for WebGL2)
-const TEXTURE_VERT_SRC: &[u8] = br#"#version 300 es
+// Static vertex shader (no animation)
+const STATIC_VERT_SRC: &[u8] = br#"#version 300 es
 in vec2 a_pos;
 in vec2 a_uv;
 out vec2 v_uv;
@@ -10,6 +10,26 @@ out vec2 v_uv;
 void main() {
     v_uv = a_uv;
     gl_Position = vec4(a_pos, 0.0, 1.0);
+}
+"#;
+
+// Animated vertex shader
+const ANIMATED_VERT_SRC: &[u8] = br#"#version 300 es
+in vec2 a_pos;
+in vec2 a_uv;
+out vec2 v_uv;
+
+layout(std140) uniform Locals {
+    float u_time;
+};
+
+void main() {
+    v_uv = a_uv;
+
+    float angle = u_time * 6.28318530718 / 5.0;
+    vec2 d = vec2(cos(angle), sin(angle)) * 0.1;
+
+    gl_Position = vec4(a_pos + d, 0.0, 1.0);
 }
 "#;
 
@@ -26,28 +46,51 @@ void main() {
 }
 "#;
 
-const TEXTURE_VERT: ShaderSource = ShaderSource {
-    sources: &[("webgl2", TEXTURE_VERT_SRC)],
+const STATIC_VERT: ShaderSource = ShaderSource {
+    sources: &[("webgl2", STATIC_VERT_SRC)],
+};
+
+const ANIMATED_VERT: ShaderSource = ShaderSource {
+    sources: &[("webgl2", ANIMATED_VERT_SRC)],
 };
 
 const TEXTURE_FRAG: ShaderSource = ShaderSource {
     sources: &[("webgl2", TEXTURE_FRAG_SRC)],
 };
 
-pub fn create_texture_pipeline(gfx: &mut Graphics) -> (Pipeline, Buffer, VertexInfo) {
+pub struct NotanPipelines {
+    pub static_pipeline: Pipeline,   // Step1用
+    pub animated_pipeline: Pipeline, // Step3用
+    pub quad_vbo: Buffer,
+    pub time_ubo: Buffer,
+}
+
+pub fn create_pipelines(gfx: &mut Graphics) -> NotanPipelines {
     let vertex_info = VertexInfo::new()
         .attr(0, VertexFormat::Float32x2) // position
         .attr(1, VertexFormat::Float32x2); // uv
 
-    let pipeline = gfx
+    // Static pipeline (step1)
+    let static_pipeline = gfx
         .create_pipeline()
-        .from(&TEXTURE_VERT, &TEXTURE_FRAG)
+        .from(&STATIC_VERT, &TEXTURE_FRAG)
         .with_vertex_info(&vertex_info)
         .with_texture_location(0, "u_texture")
         .with_color_blend(BlendMode::NORMAL)
         .with_alpha_blend(BlendMode::NONE)
         .build()
-        .expect("Failed to create texture pipeline");
+        .expect("Failed to create static pipeline");
+
+    // Animated pipeline (step3)
+    let animated_pipeline = gfx
+        .create_pipeline()
+        .from(&ANIMATED_VERT, &TEXTURE_FRAG)
+        .with_vertex_info(&vertex_info)
+        .with_texture_location(0, "u_texture")
+        .with_color_blend(BlendMode::NORMAL)
+        .with_alpha_blend(BlendMode::NONE)
+        .build()
+        .expect("Failed to create animated pipeline");
 
     // Fullscreen quad with UVs
     #[rustfmt::skip]
@@ -68,5 +111,16 @@ pub fn create_texture_pipeline(gfx: &mut Graphics) -> (Pipeline, Buffer, VertexI
         .build()
         .expect("Failed to create quad VBO");
 
-    (pipeline, quad_vbo, vertex_info)
+    let time_ubo = gfx
+        .create_uniform_buffer(0, "Locals")
+        .with_data(&[0.0f32])
+        .build()
+        .expect("Failed to create time UBO");
+
+    NotanPipelines {
+        static_pipeline,
+        animated_pipeline,
+        quad_vbo,
+        time_ubo,
+    }
 }

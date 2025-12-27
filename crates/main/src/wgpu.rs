@@ -3,6 +3,13 @@ use std::sync::Arc;
 use wasm_bindgen::JsValue;
 use wgpu::hal;
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct TimeUniform {
+    time: f32,
+    _pad: [f32; 3], // Pad to 16 bytes for WebGL
+}
+
 pub struct WgpuProcessor {
     pub device: Arc<wgpu::Device>,
     pub queue: Arc<wgpu::Queue>,
@@ -11,6 +18,7 @@ pub struct WgpuProcessor {
     invert_pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
+    time_buffer: wgpu::Buffer,
     // Cached textures (to avoid recreating/dropping each frame)
     cached_input: RefCell<Option<wgpu::Texture>>,
     cached_output: RefCell<Option<wgpu::Texture>>,
@@ -73,6 +81,14 @@ impl WgpuProcessor {
             ..Default::default()
         });
 
+        // Create time uniform buffer
+        let time_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Time Buffer"),
+            size: std::mem::size_of::<TimeUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Invert Bind Group Layout"),
@@ -91,6 +107,16 @@ impl WgpuProcessor {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
                     count: None,
                 },
             ],
@@ -145,6 +171,7 @@ impl WgpuProcessor {
             invert_pipeline,
             sampler,
             bind_group_layout,
+            time_buffer,
             cached_input: RefCell::new(None),
             cached_output: RefCell::new(None),
             cached_bind_group: RefCell::new(None),
@@ -180,6 +207,10 @@ impl WgpuProcessor {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: self.time_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -188,8 +219,11 @@ impl WgpuProcessor {
         *self.cached_bind_group.borrow_mut() = Some(bind_group);
     }
 
-    /// Process input texture with RGB inversion using wgpu
-    pub fn invert(&self) {
+    /// Process input texture with hue rotation using wgpu
+    pub fn process(&self, time: f32) {
+        // Update time uniform
+        self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[TimeUniform { time, _pad: [0.0; 3] }]));
+
         let output_ref = self.cached_output.borrow();
         let bind_group_ref = self.cached_bind_group.borrow();
 

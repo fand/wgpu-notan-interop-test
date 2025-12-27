@@ -20,29 +20,31 @@ struct State {
     texture2: RenderTexture,
 
     // Notan resources
-    texture_pipeline: Pipeline,
-    quad_vbo: Buffer,
+    pipelines: notan_pipeline::NotanPipelines,
 
     // wgpu processor
     wgpu_processor: wgpu::WgpuProcessor,
+
+    // Animation time
+    start_time: f64,
 }
 
 impl AppState for State {}
 
 fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
-    // === 1. Render ferris to texture1 using Notan ===
+    // === 1. Render ferris to texture1 using Notan (static) ===
     {
         let mut renderer = gfx.create_renderer();
         renderer.begin(Some(ClearOptions::color(Color::TRANSPARENT)));
-        renderer.set_pipeline(&state.texture_pipeline);
+        renderer.set_pipeline(&state.pipelines.static_pipeline);
         renderer.bind_texture(0, &state.ferris);
-        renderer.bind_buffer(&state.quad_vbo);
+        renderer.bind_buffer(&state.pipelines.quad_vbo);
         renderer.draw(0, 6);
         renderer.end();
         gfx.render_to(&state.texture1, &renderer);
     }
 
-    // === 2. Process texture1 -> texture2 with RGB inversion (wgpu) ===
+    // === 2. Process texture1 -> texture2 with hue rotation (wgpu) ===
     {
         let backend = gfx.device.downcast_backend::<GlowBackend>().unwrap();
 
@@ -56,26 +58,43 @@ fn draw(_app: &mut App, gfx: &mut Graphics, state: &mut State) {
             .get_raw_texture(state.texture2.texture().id())
             .expect("Failed to get texture2 raw handle");
 
+        // Calculate elapsed time
+        let window = web_sys::window().unwrap();
+        let now = window.performance().unwrap().now() / 1000.0;
+        let time = (now - state.start_time) as f32;
+
         // Initialize textures once (cached internally)
         state
             .wgpu_processor
             .init_textures(input_raw, output_raw, WIDTH, HEIGHT);
-        state.wgpu_processor.invert();
+        state.wgpu_processor.process(time);
 
         // Reset wgpu's sampler bindings so Notan can render correctly
         backend.unbind_samplers();
     }
 
-    // === 3. Render texture2 to screen using Notan ===
+    // === 3. Render texture2 to screen using Notan (animated) ===
     {
         let (width, height) = gfx.device.size();
+
+        // Calculate elapsed time
+        let window = web_sys::window().unwrap();
+        let now = window.performance().unwrap().now() / 1000.0;
+        let time = (now - state.start_time) as f32;
+
+        // Update time uniform buffer
+        gfx.set_buffer_data(&state.pipelines.time_ubo, &[time]);
+
         let mut renderer = gfx.create_renderer();
         renderer.set_size(width, height);
-        renderer.begin(Some(ClearOptions::color(Color::BLACK)));
+        renderer.begin(Some(ClearOptions::color(Color::TRANSPARENT)));
         renderer.set_scissors(0.0, 0.0, width as f32, height as f32);
-        renderer.set_pipeline(&state.texture_pipeline);
+        renderer.set_pipeline(&state.pipelines.animated_pipeline);
         renderer.bind_texture(0, state.texture2.texture());
-        renderer.bind_buffer(&state.quad_vbo);
+        renderer.bind_buffers(&[
+            &state.pipelines.quad_vbo,
+            &state.pipelines.time_ubo,
+        ]);
         renderer.draw(0, 6);
         renderer.end();
         gfx.render(&renderer);
@@ -102,7 +121,7 @@ fn get_webgl2_context(
         .map_err(|_| JsValue::from_str("Failed to cast to WebGl2RenderingContext"))
 }
 
-fn setup(gfx: &mut Graphics, wgpu_processor: wgpu::WgpuProcessor) -> State {
+fn setup(gfx: &mut Graphics, wgpu_processor: wgpu::WgpuProcessor, start_time: f64) -> State {
     // Load ferris.png
     let ferris_bytes = include_bytes!("../ferris.png");
     let ferris = gfx
@@ -122,16 +141,16 @@ fn setup(gfx: &mut Graphics, wgpu_processor: wgpu::WgpuProcessor) -> State {
         .build()
         .expect("Failed to create texture2");
 
-    // Create texture rendering pipeline
-    let (texture_pipeline, quad_vbo, _) = notan_pipeline::create_texture_pipeline(gfx);
+    // Create pipelines
+    let pipelines = notan_pipeline::create_pipelines(gfx);
 
     State {
         ferris,
         texture1,
         texture2,
-        texture_pipeline,
-        quad_vbo,
+        pipelines,
         wgpu_processor,
+        start_time,
     }
 }
 
@@ -149,6 +168,9 @@ async fn run() -> Result<(), JsValue> {
     // Initialize wgpu processor first (before Notan takes the context)
     let wgpu_processor = wgpu::WgpuProcessor::new(&canvas).await?;
 
+    // Get start time for animation
+    let start_time = window.performance().unwrap().now() / 1000.0;
+
     // Get WebGL2 context and create notan backend
     let webgl2_ctx = get_webgl2_context(&canvas)?;
     let backend = WebBackend::with_webgl2_context(webgl2_ctx).map_err(|e| JsValue::from_str(&e))?;
@@ -156,7 +178,7 @@ async fn run() -> Result<(), JsValue> {
     let win_config = WindowConfig::default().set_app_id("notan");
 
     AppBuilder::new(
-        move |gfx: &mut Graphics| setup(gfx, wgpu_processor),
+        move |gfx: &mut Graphics| setup(gfx, wgpu_processor, start_time),
         backend,
     )
     .add_config(win_config)

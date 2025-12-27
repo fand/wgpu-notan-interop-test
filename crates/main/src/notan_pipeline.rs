@@ -44,6 +44,8 @@ pub fn create_texture_pipeline(gfx: &mut Graphics) -> (Pipeline, Buffer, VertexI
         .from(&TEXTURE_VERT, &TEXTURE_FRAG)
         .with_vertex_info(&vertex_info)
         .with_texture_location(0, "u_texture")
+        .with_color_blend(BlendMode::NORMAL)
+        .with_alpha_blend(BlendMode::NONE)
         .build()
         .expect("Failed to create texture pipeline");
 

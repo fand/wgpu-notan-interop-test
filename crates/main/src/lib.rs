@@ -10,8 +10,8 @@ use notan_web::WebBackend;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-const WIDTH: u32 = 512;
-const HEIGHT: u32 = 512;
+const WIDTH: u32 = 1024;
+const HEIGHT: u32 = 1024;
 
 struct State {
     // Textures

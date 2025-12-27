@@ -12,37 +12,37 @@ use wasm_bindgen::JsCast;
 const WIDTH: u32 = 512;
 const HEIGHT: u32 = 512;
 
-// Notan shaders for rendering textures
-//language=glsl
-const TEXTURE_VERT: ShaderSource = notan_macro::vertex_shader! {
-    r#"
-    #version 450
-    layout(location = 0) in vec2 a_pos;
-    layout(location = 1) in vec2 a_uv;
-    layout(location = 0) out vec2 v_uv;
+// Notan shaders for rendering textures (GLSL 300 ES for WebGL2)
+const TEXTURE_VERT_SRC: &[u8] = br#"#version 300 es
+in vec2 a_pos;
+in vec2 a_uv;
+out vec2 v_uv;
 
-    void main() {
-        v_uv = a_uv;
-        gl_Position = vec4(a_pos, 0.0, 1.0);
-    }
-    "#
+void main() {
+    v_uv = a_uv;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+}
+"#;
+
+const TEXTURE_FRAG_SRC: &[u8] = br#"#version 300 es
+precision mediump float;
+
+in vec2 v_uv;
+out vec4 color;
+
+uniform sampler2D u_texture;
+
+void main() {
+    color = texture(u_texture, v_uv);
+}
+"#;
+
+const TEXTURE_VERT: ShaderSource = ShaderSource {
+    sources: &[("webgl2", TEXTURE_VERT_SRC)],
 };
 
-//language=glsl
-const TEXTURE_FRAG: ShaderSource = notan_macro::fragment_shader! {
-    r#"
-    #version 450
-    precision mediump float;
-
-    layout(location = 0) in vec2 v_uv;
-    layout(location = 0) out vec4 color;
-
-    layout(set = 0, binding = 0) uniform sampler2D u_texture;
-
-    void main() {
-        color = texture(u_texture, v_uv);
-    }
-    "#
+const TEXTURE_FRAG: ShaderSource = ShaderSource {
+    sources: &[("webgl2", TEXTURE_FRAG_SRC)],
 };
 
 struct State {

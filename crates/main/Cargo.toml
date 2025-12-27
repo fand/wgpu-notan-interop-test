@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 notan_core = { path = "../notan_core" }
 notan_app = { path = "../notan_app" }
-notan_macro = { path = "../notan_macro", features = ["glsl-to-spirv"] }
+notan_macro = { path = "../notan_macro" }
 notan_graphics = { path = "../notan_graphics" }
 notan_glow = { path = "../notan_glow" }
 notan_web = { path = "../notan_web" }
@@ -30,6 +30,6 @@ web-sys = { version = "0.3", features = [
 ] }
 console_error_panic_hook = "0.1"
 console_log = "1.0"
-wgpu = { version = "23", features = ["webgl"] }
+wgpu = { version = "28", features = ["webgl"] }
 glow = "0.16"
 downcast-rs = "2.0"

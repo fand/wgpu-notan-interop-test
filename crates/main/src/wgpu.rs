@@ -37,21 +37,18 @@ impl WgpuProcessor {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or("Failed to get adapter")?;
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
-                    ..Default::default()
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                ..Default::default()
+            })
             .await
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let device = Arc::new(device);
-        let queue = Arc::new(queue);
+        let device: Arc<wgpu::Device> = Arc::new(device);
+        let queue: Arc<wgpu::Queue> = Arc::new(queue);
 
         log::info!("wgpu processor initialized: {:?}", adapter.get_info());
 
@@ -72,7 +69,7 @@ impl WgpuProcessor {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 
@@ -103,7 +100,7 @@ impl WgpuProcessor {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Invert Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            ..Default::default()
         });
 
         // Create render pipeline
@@ -137,7 +134,7 @@ impl WgpuProcessor {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -215,10 +212,12 @@ impl WgpuProcessor {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             render_pass.set_pipeline(&self.invert_pipeline);
@@ -264,7 +263,7 @@ impl WgpuProcessor {
             sample_count: desc.sample_count,
             dimension: desc.dimension,
             format: desc.format,
-            usage: hal::TextureUses::from_bits(desc.usage.bits() as u16).unwrap_or(hal::TextureUses::empty()),
+            usage: wgpu::TextureUses::from_bits(desc.usage.bits() as u16).unwrap_or(wgpu::TextureUses::empty()),
             memory_flags: hal::MemoryFlags::empty(),
             view_formats: vec![],
         };
@@ -273,12 +272,10 @@ impl WgpuProcessor {
 
         // Access hal device to get glow context and register raw texture
         unsafe {
-            self.device.as_hal::<hal::api::Gles, _, _>(|hal_device| {
-                let hal_device = hal_device.expect("Failed to get hal device");
-                let gl = hal_device.glow_context();
-                let hal_texture = hal::gles::Texture::from_raw_webgl(gl, raw_texture, &hal_desc, format_desc);
-                self.device.create_texture_from_hal::<hal::api::Gles>(hal_texture, &desc)
-            }).expect("Failed to access hal device")
+            let hal_device = self.device.as_hal::<hal::api::Gles>().expect("Failed to access hal device");
+            let gl = hal_device.glow_context();
+            let hal_texture = hal::gles::Texture::from_raw_webgl(gl, raw_texture, &hal_desc, format_desc);
+            self.device.create_texture_from_hal::<hal::api::Gles>(hal_texture, &desc)
         }
     }
 }

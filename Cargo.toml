@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/*"]
-exclude = ["crates/wgpu-patched", "crates/glow-patched"]
+exclude = ["crates/wgpu-patched", "crates/glow-patched", "crates/notan"]
 resolver = "2"
 
 [workspace.package]
@@ -12,26 +12,26 @@ repository = "https://github.com/Nazariglez/notan"
 edition = "2021"
 
 [workspace.dependencies]
-notan_core = { path = "crates/notan_core" }
-notan_input = { path = "crates/notan_input" }
-notan_app = { path = "crates/notan_app" }
-notan_macro = { path = "crates/notan_macro" }
-notan_math = { path = "crates/notan_math" }
-notan_graphics = { path = "crates/notan_graphics" }
-notan_utils = { path = "crates/notan_utils" }
-notan_log = { path = "crates/notan_log" }
-notan_glyph = { path = "crates/notan_glyph" }
-notan_draw = { path = "crates/notan_draw" }
-notan_backend = { path = "crates/notan_backend" }
-notan_egui = { path = "crates/notan_egui" }
-notan_text = { path = "crates/notan_text" }
-notan_audio = { path = "crates/notan_audio" }
-notan_extra = { path = "crates/notan_extra" }
-notan_random = { path = "crates/notan_random" }
-notan_winit = { path = "crates/notan_winit" }
-notan_web = { path = "crates/notan_web" }
-notan_glow = { path = "crates/notan_glow" }
-notan_oddio = { path = "crates/notan_oddio" }
+notan_core = { path = "crates/notan/crates/notan_core" }
+notan_input = { path = "crates/notan/crates/notan_input" }
+notan_app = { path = "crates/notan/crates/notan_app" }
+notan_macro = { path = "crates/notan/crates/notan_macro" }
+notan_math = { path = "crates/notan/crates/notan_math" }
+notan_graphics = { path = "crates/notan/crates/notan_graphics" }
+notan_utils = { path = "crates/notan/crates/notan_utils" }
+notan_log = { path = "crates/notan/crates/notan_log" }
+notan_glyph = { path = "crates/notan/crates/notan_glyph" }
+notan_draw = { path = "crates/notan/crates/notan_draw" }
+notan_backend = { path = "crates/notan/crates/notan_backend" }
+notan_egui = { path = "crates/notan/crates/notan_egui" }
+notan_text = { path = "crates/notan/crates/notan_text" }
+notan_audio = { path = "crates/notan/crates/notan_audio" }
+notan_extra = { path = "crates/notan/crates/notan_extra" }
+notan_random = { path = "crates/notan/crates/notan_random" }
+notan_winit = { path = "crates/notan/crates/notan_winit" }
+notan_web = { path = "crates/notan/crates/notan_web" }
+notan_glow = { path = "crates/notan/crates/notan_glow" }
+notan_oddio = { path = "crates/notan/crates/notan_oddio" }
 
 log = "0.4"
 hashbrown = "0.15"

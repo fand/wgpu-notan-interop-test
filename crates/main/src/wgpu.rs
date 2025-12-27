@@ -1,13 +1,12 @@
 use std::cell::RefCell;
 use std::sync::Arc;
+use encase::ShaderType;
 use wasm_bindgen::JsValue;
 use wgpu::hal;
 
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(ShaderType)]
 struct TimeUniform {
     time: f32,
-    _pad: [f32; 3], // Pad to 16 bytes for WebGL
 }
 
 pub struct WgpuProcessor {
@@ -84,7 +83,7 @@ impl WgpuProcessor {
         // Create time uniform buffer
         let time_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Time Buffer"),
-            size: std::mem::size_of::<TimeUniform>() as u64,
+            size: 16, // WebGL2 requires 16-byte aligned uniforms
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -222,7 +221,9 @@ impl WgpuProcessor {
     /// Process input texture with hue rotation using wgpu
     pub fn process(&self, time: f32) {
         // Update time uniform
-        self.queue.write_buffer(&self.time_buffer, 0, bytemuck::cast_slice(&[TimeUniform { time, _pad: [0.0; 3] }]));
+        let mut buffer = encase::UniformBuffer::new(Vec::new());
+        buffer.write(&TimeUniform { time }).unwrap();
+        self.queue.write_buffer(&self.time_buffer, 0, &buffer.into_inner());
 
         let output_ref = self.cached_output.borrow();
         let bind_group_ref = self.cached_bind_group.borrow();
